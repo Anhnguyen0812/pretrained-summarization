@@ -57,6 +57,21 @@ def resolve_path(path_value: str | Path, config_path: Path | None = None) -> Pat
     for candidate in candidates:
         if candidate.exists():
             return candidate.resolve()
+
+    basename = path.name
+    search_roots = [Path.cwd(), Path.cwd().parent]
+    if Path("/kaggle/input").exists():
+        search_roots.append(Path("/kaggle/input"))
+    if Path("/kaggle/working").exists():
+        search_roots.append(Path("/kaggle/working"))
+
+    for root in search_roots:
+        try:
+            matches = sorted(root.rglob(basename))
+        except OSError:
+            continue
+        if matches:
+            return matches[0].resolve()
     return candidates[0].resolve()
 
 
@@ -130,4 +145,3 @@ def log_runtime() -> None:
             LOGGER.info("cuda:%s %s", idx, torch.cuda.get_device_name(idx))
     else:
         LOGGER.info("cuda unavailable")
-

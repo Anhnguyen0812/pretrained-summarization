@@ -59,6 +59,33 @@ Single run:
 python -m vn_summarization.train --config configs/vit5_base.yaml
 ```
 
+## Kaggle Run
+
+Kaggle setup:
+
+1. Enable GPU accelerator.
+2. Enable internet, at least for first model download.
+3. Add the two parquet files as a Kaggle Dataset.
+4. Upload this repo, or clone it into `/kaggle/working/pretrained-summarization`.
+
+Run from a Kaggle notebook cell:
+
+```bash
+cd /kaggle/working/pretrained-summarization
+python -m pip install -q -e .
+python -m vn_summarization.train --config configs/vit5_base.yaml
+```
+
+The configs use `../train-00000-of-00001.parquet` and `../valid-00000-of-00001.parquet`, but the loader also searches `/kaggle/input/**/train-00000-of-00001.parquet` and `/kaggle/input/**/valid-00000-of-00001.parquet` automatically.
+
+For a quick low-cost check:
+
+```bash
+cd /kaggle/working/pretrained-summarization
+python -m pip install -q -e .
+python -m vn_summarization.train --config configs/smoke_mt5_small.yaml
+```
+
 Priority batch:
 
 ```powershell
@@ -135,4 +162,3 @@ After first full training, use the best model and run these ablations one at a t
 8. Report qualitative error analysis from `predictions_valid.jsonl`.
 
 Do not tune many knobs at once. Keep one baseline run fixed so the report has a clean comparison.
-
