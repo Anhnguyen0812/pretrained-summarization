@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 from pathlib import Path
 
@@ -10,6 +11,15 @@ from .data import ARTICLE_COL, SUMMARY_COL, clean_text, load_splits, preprocess_
 from .metrics import build_compute_metrics
 from .modeling import load_tokenizer_and_model
 from .utils import apply_overrides, configure_logging, load_yaml, save_json
+
+
+def _trainer_processing_kwargs(tokenizer) -> dict:
+    signature = inspect.signature(Seq2SeqTrainer.__init__)
+    if "tokenizer" in signature.parameters:
+        return {"tokenizer": tokenizer}
+    if "processing_class" in signature.parameters:
+        return {"processing_class": tokenizer}
+    return {}
 
 
 def evaluate_model(config: dict, config_path: Path, model_path: str, predictions_path: str | None):
@@ -33,9 +43,9 @@ def evaluate_model(config: dict, config_path: Path, model_path: str, predictions
     trainer = Seq2SeqTrainer(
         model=model,
         args=args,
-        tokenizer=tokenizer,
         data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model, label_pad_token_id=-100),
         compute_metrics=build_compute_metrics(tokenizer),
+        **_trainer_processing_kwargs(tokenizer),
     )
     output = trainer.predict(
         tokenized["validation"],
@@ -82,4 +92,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

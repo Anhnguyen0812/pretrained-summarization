@@ -33,6 +33,15 @@ def _supported_training_args(raw_args: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in raw_args.items() if key in supported}
 
 
+def _trainer_processing_kwargs(tokenizer) -> dict[str, Any]:
+    signature = inspect.signature(Seq2SeqTrainer.__init__)
+    if "tokenizer" in signature.parameters:
+        return {"tokenizer": tokenizer}
+    if "processing_class" in signature.parameters:
+        return {"processing_class": tokenizer}
+    return {}
+
+
 def build_training_args(config: dict[str, Any]) -> Seq2SeqTrainingArguments:
     training_cfg = config["training"]
     generation_cfg = config.get("generation", {})
@@ -117,10 +126,10 @@ def train(config: dict[str, Any], config_path: Path) -> dict[str, Any]:
         args=training_args,
         train_dataset=tokenized["train"],
         eval_dataset=tokenized["validation"],
-        tokenizer=tokenizer,
         data_collator=data_collator,
         compute_metrics=build_compute_metrics(tokenizer),
         callbacks=callbacks,
+        **_trainer_processing_kwargs(tokenizer),
     )
 
     LOGGER.info("start training output_dir=%s", training_args.output_dir)
