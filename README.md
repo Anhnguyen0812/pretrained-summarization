@@ -76,6 +76,22 @@ python -m pip install -q -e .
 python -m vn_summarization.train --config configs/vit5_base.yaml
 ```
 
+For Kaggle T4x2, prefer DDP through Accelerate:
+
+```bash
+cd /kaggle/working/pretrained-summarization
+python -m pip install -q -e .
+python -m accelerate.commands.launch --multi_gpu --num_processes 2 --mixed_precision fp16 \
+  -m vn_summarization.train --config configs/vit5_base_t4x2.yaml
+```
+
+LoRA on T4x2:
+
+```bash
+python -m accelerate.commands.launch --multi_gpu --num_processes 2 --mixed_precision fp16 \
+  -m vn_summarization.train --config configs/vit5_base_lora_t4x2.yaml
+```
+
 The configs use `../train-00000-of-00001.parquet` and `../valid-00000-of-00001.parquet`, but the loader also searches `/kaggle/input/**/train-00000-of-00001.parquet` and `/kaggle/input/**/valid-00000-of-00001.parquet` automatically.
 
 For a quick low-cost check:

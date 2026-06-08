@@ -74,6 +74,7 @@ def build_training_args(config: dict[str, Any]) -> Seq2SeqTrainingArguments:
         "generation_num_beams": int(generation_cfg.get("num_beams", 4)),
         "remove_unused_columns": True,
         "save_safetensors": bool(training_cfg.get("save_safetensors", True)),
+        "ddp_find_unused_parameters": training_cfg.get("ddp_find_unused_parameters", None),
     }
 
     strategy = training_cfg.get("strategy", "steps")
@@ -166,4 +167,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
