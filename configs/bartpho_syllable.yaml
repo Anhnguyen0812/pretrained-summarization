@@ -1,0 +1,61 @@
+model:
+  name_or_path: vinai/bartpho-syllable
+  use_fast_tokenizer: true
+  trust_remote_code: false
+  cache_dir:
+
+data:
+  train_file: ../train-00000-of-00001.parquet
+  valid_file: ../valid-00000-of-00001.parquet
+  source_prefix: ""
+  max_source_length: 768
+  max_target_length: 160
+  preprocessing_num_proc: 1
+  max_train_samples:
+  max_eval_samples:
+
+training:
+  output_dir: outputs/bartpho_syllable
+  overwrite_output_dir: false
+  seed: 42
+  precision: auto
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 4
+  gradient_accumulation_steps: 8
+  num_train_epochs: 6
+  max_steps: -1
+  learning_rate: 0.00002
+  weight_decay: 0.01
+  warmup_ratio: 0.06
+  lr_scheduler_type: cosine
+  label_smoothing_factor: 0.1
+  dropout: 0.1
+  optim: adamw_torch
+  gradient_checkpointing: true
+  freeze_encoder: false
+  strategy: steps
+  save_strategy: steps
+  eval_steps: 250
+  save_steps: 250
+  logging_steps: 50
+  save_total_limit: 3
+  load_best_model_at_end: true
+  metric_for_best_model: rougeL
+  greater_is_better: true
+  early_stopping_patience: 4
+  report_to:
+    - tensorboard
+  save_safetensors: true
+
+generation:
+  max_length: 160
+  min_length: 50
+  num_beams: 4
+  length_penalty: 1.0
+  no_repeat_ngram_size: 3
+  repetition_penalty: 1.05
+  early_stopping: true
+
+lora:
+  enabled: false
+

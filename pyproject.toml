@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vn-summarization-finetune"
+version = "0.1.0"
+description = "Pretrained seq2seq fine-tuning repo for Vietnamese abstractive summarization."
+requires-python = ">=3.10"
+dependencies = [
+  "accelerate>=0.33.0",
+  "datasets>=2.20.0",
+  "evaluate>=0.4.2",
+  "numpy>=1.26.0",
+  "pandas>=2.2.0",
+  "peft>=0.12.0",
+  "protobuf>=4.25.0",
+  "pyarrow>=15.0.0",
+  "pyyaml>=6.0.1",
+  "rouge-score>=0.1.2",
+  "sentencepiece>=0.2.0",
+  "tensorboard>=2.16.0",
+  "torch>=2.3.0",
+  "transformers>=4.44.0"
+]
+
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.6.0"
+]
+cuda-linux = [
+  "bitsandbytes>=0.43.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+

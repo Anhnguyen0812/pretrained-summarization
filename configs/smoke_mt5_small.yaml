@@ -1,0 +1,60 @@
+model:
+  name_or_path: google/mt5-small
+  use_fast_tokenizer: true
+  trust_remote_code: false
+  cache_dir:
+
+data:
+  train_file: ../train-00000-of-00001.parquet
+  valid_file: ../valid-00000-of-00001.parquet
+  source_prefix: "summarize: "
+  max_source_length: 128
+  max_target_length: 48
+  preprocessing_num_proc: 1
+  max_train_samples: 16
+  max_eval_samples: 8
+
+training:
+  output_dir: outputs/smoke_mt5_small
+  overwrite_output_dir: true
+  seed: 42
+  precision: fp32
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 1
+  num_train_epochs: 1
+  max_steps: 2
+  learning_rate: 0.0001
+  weight_decay: 0.0
+  warmup_ratio: 0.0
+  lr_scheduler_type: linear
+  label_smoothing_factor: 0.0
+  dropout: 0.1
+  optim: adamw_torch
+  gradient_checkpointing: false
+  freeze_encoder: false
+  strategy: steps
+  save_strategy: steps
+  eval_steps: 1
+  save_steps: 1
+  logging_steps: 1
+  save_total_limit: 1
+  load_best_model_at_end: true
+  metric_for_best_model: rougeL
+  greater_is_better: true
+  early_stopping_patience:
+  report_to: []
+  save_safetensors: true
+
+generation:
+  max_length: 48
+  min_length: 10
+  num_beams: 2
+  length_penalty: 1.0
+  no_repeat_ngram_size: 2
+  repetition_penalty: 1.0
+  early_stopping: true
+
+lora:
+  enabled: false
+
