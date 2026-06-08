@@ -28,12 +28,24 @@ def load_tokenizer_and_model(config: dict[str, Any], for_training: bool = True):
     trust_remote_code = bool(model_cfg.get("trust_remote_code", False))
     cache_dir = model_cfg.get("cache_dir")
 
-    tokenizer = AutoTokenizer.from_pretrained(
-        name_or_path,
-        use_fast=bool(model_cfg.get("use_fast_tokenizer", True)),
-        trust_remote_code=trust_remote_code,
-        cache_dir=cache_dir,
-    )
+    use_fast = bool(model_cfg.get("use_fast_tokenizer", True))
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(
+            name_or_path,
+            use_fast=use_fast,
+            trust_remote_code=trust_remote_code,
+            cache_dir=cache_dir,
+        )
+    except Exception as exc:
+        if not use_fast:
+            raise
+        LOGGER.warning("fast tokenizer failed for %s; retrying slow tokenizer: %s", name_or_path, exc)
+        tokenizer = AutoTokenizer.from_pretrained(
+            name_or_path,
+            use_fast=False,
+            trust_remote_code=trust_remote_code,
+            cache_dir=cache_dir,
+        )
     model_config = AutoConfig.from_pretrained(
         name_or_path,
         trust_remote_code=trust_remote_code,
