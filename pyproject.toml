@@ -21,7 +21,8 @@ dependencies = [
   "sentencepiece>=0.2.0",
   "tensorboard>=2.16.0",
   "torch>=2.3.0",
-  "transformers>=4.44.0"
+  "tokenizers==0.20.3",
+  "transformers==4.46.3"
 ]
 
 [project.optional-dependencies]
@@ -38,4 +39,3 @@ where = ["src"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-
