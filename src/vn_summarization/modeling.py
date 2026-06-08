@@ -28,29 +28,12 @@ def load_tokenizer_and_model(config: dict[str, Any], for_training: bool = True):
     trust_remote_code = bool(model_cfg.get("trust_remote_code", False))
     cache_dir = model_cfg.get("cache_dir")
 
-    use_fast = bool(model_cfg.get("use_fast_tokenizer", True))
-    try:
-        tokenizer = AutoTokenizer.from_pretrained(
-            name_or_path,
-            use_fast=use_fast,
-            trust_remote_code=trust_remote_code,
-            cache_dir=cache_dir,
-        )
-    except Exception as exc:
-        if not use_fast:
-            raise
-        LOGGER.warning("fast tokenizer failed for %s; retrying slow tokenizer: %s", name_or_path, exc)
-        tokenizer = AutoTokenizer.from_pretrained(
-            name_or_path,
-            use_fast=False,
-            trust_remote_code=trust_remote_code,
-            cache_dir=cache_dir,
-        )
     model_config = AutoConfig.from_pretrained(
         name_or_path,
         trust_remote_code=trust_remote_code,
         cache_dir=cache_dir,
     )
+    tokenizer = _load_tokenizer(name_or_path, model_config, model_cfg, trust_remote_code, cache_dir)
     _set_dropout(model_config, training_cfg.get("dropout"))
     model = AutoModelForSeq2SeqLM.from_pretrained(
         name_or_path,
@@ -89,6 +72,42 @@ def load_tokenizer_and_model(config: dict[str, Any], for_training: bool = True):
         )
     LOGGER.info("model=%s params=%s", name_or_path, params)
     return tokenizer, model
+
+
+def _load_tokenizer(name_or_path: str, model_config, model_cfg: dict[str, Any], trust_remote_code: bool, cache_dir):
+    use_fast = bool(model_cfg.get("use_fast_tokenizer", True))
+    tokenizer_errors: list[str] = []
+
+    # ViT5 uses a T5 SentencePiece tokenizer. Some recent Transformers/tokenizers
+    # builds on Kaggle fail while converting this tokenizer to native fast format.
+    if getattr(model_config, "model_type", "") == "t5":
+        try:
+            from transformers import T5Tokenizer
+
+            return T5Tokenizer.from_pretrained(
+                name_or_path,
+                legacy=False,
+                trust_remote_code=trust_remote_code,
+                cache_dir=cache_dir,
+            )
+        except Exception as exc:
+            tokenizer_errors.append(f"T5Tokenizer slow failed: {exc!r}")
+
+    for fast in ([use_fast, False] if use_fast else [False, True]):
+        try:
+            return AutoTokenizer.from_pretrained(
+                name_or_path,
+                use_fast=fast,
+                trust_remote_code=trust_remote_code,
+                cache_dir=cache_dir,
+            )
+        except Exception as exc:
+            tokenizer_errors.append(f"AutoTokenizer use_fast={fast} failed: {exc!r}")
+
+    raise RuntimeError(
+        "Could not load tokenizer for "
+        f"{name_or_path}. Attempts:\n- " + "\n- ".join(tokenizer_errors)
+    )
 
 
 def apply_lora_if_enabled(model, config: dict[str, Any]):
