@@ -23,10 +23,7 @@ def _trainer_processing_kwargs(tokenizer) -> dict:
 
 
 def evaluate_model(config: dict, config_path: Path, model_path: str, predictions_path: str | None):
-    config = dict(config)
-    config["model"] = dict(config["model"])
-    config["model"]["name_or_path"] = model_path
-    tokenizer, model = load_tokenizer_and_model(config, for_training=False)
+    tokenizer, model = _load_eval_model(config, model_path)
     raw_dataset = load_splits(config, config_path)
     tokenized = preprocess_dataset(raw_dataset, tokenizer, config)
 
@@ -59,6 +56,7 @@ def evaluate_model(config: dict, config_path: Path, model_path: str, predictions
         preds = tokenizer.batch_decode(output.predictions, skip_special_tokens=True)
         out_path = Path(predictions_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
+        save_json(metrics, out_path.parent / "validation_metrics.json")
         with out_path.open("w", encoding="utf-8") as f:
             for source, target, pred in zip(
                 raw_dataset["validation"][ARTICLE_COL], raw_dataset["validation"][SUMMARY_COL], preds
@@ -70,6 +68,22 @@ def evaluate_model(config: dict, config_path: Path, model_path: str, predictions
                 }
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
     return metrics
+
+
+def _load_eval_model(config: dict, model_path: str):
+    model_dir = Path(model_path)
+    config = dict(config)
+    config["model"] = dict(config["model"])
+
+    if (model_dir / "adapter_config.json").exists():
+        tokenizer, model = load_tokenizer_and_model(config, for_training=False)
+        from peft import PeftModel
+
+        model = PeftModel.from_pretrained(model, model_path)
+        return tokenizer, model
+
+    config["model"]["name_or_path"] = model_path
+    return load_tokenizer_and_model(config, for_training=False)
 
 
 def parse_args() -> argparse.Namespace:
