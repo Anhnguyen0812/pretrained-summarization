@@ -18,9 +18,10 @@ def main() -> None:
     encoded = tokenizer("summarize: Đây là một bài kiểm tra tokenizer tiếng Việt.")
     print(type(tokenizer).__name__)
     print("is_fast", getattr(tokenizer, "is_fast", False))
+    print("vocab_size", len(tokenizer))
+    print("pad/eos/unk", tokenizer.pad_token_id, tokenizer.eos_token_id, tokenizer.unk_token_id)
     print("tokens", len(encoded["input_ids"]))
 
 
 if __name__ == "__main__":
     main()
-

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import inspect
+import json
+from pathlib import Path
 from typing import Any
 
 from transformers import AutoConfig, AutoModelForSeq2SeqLM, AutoTokenizer
@@ -82,16 +85,9 @@ def _load_tokenizer(name_or_path: str, model_config, model_cfg: dict[str, Any], 
     # builds on Kaggle fail while converting this tokenizer to native fast format.
     if getattr(model_config, "model_type", "") == "t5":
         try:
-            from transformers import T5Tokenizer
-
-            return T5Tokenizer.from_pretrained(
-                name_or_path,
-                legacy=False,
-                trust_remote_code=trust_remote_code,
-                cache_dir=cache_dir,
-            )
+            return _load_t5_sentencepiece_tokenizer(name_or_path, cache_dir)
         except Exception as exc:
-            tokenizer_errors.append(f"T5Tokenizer slow failed: {exc!r}")
+            tokenizer_errors.append(f"direct T5 SentencePiece tokenizer failed: {exc!r}")
 
     for fast in ([use_fast, False] if use_fast else [False, True]):
         try:
@@ -108,6 +104,61 @@ def _load_tokenizer(name_or_path: str, model_config, model_cfg: dict[str, Any], 
         "Could not load tokenizer for "
         f"{name_or_path}. Attempts:\n- " + "\n- ".join(tokenizer_errors)
     )
+
+
+def _load_t5_sentencepiece_tokenizer(name_or_path: str, cache_dir):
+    from huggingface_hub import hf_hub_download
+    from transformers import T5Tokenizer
+
+    model_path = Path(name_or_path)
+    if model_path.exists():
+        spiece_path = model_path / "spiece.model"
+        tokenizer_config_path = model_path / "tokenizer_config.json"
+    else:
+        spiece_path = Path(
+            hf_hub_download(name_or_path, filename="spiece.model", cache_dir=cache_dir)
+        )
+        try:
+            tokenizer_config_path = Path(
+                hf_hub_download(name_or_path, filename="tokenizer_config.json", cache_dir=cache_dir)
+            )
+        except Exception:
+            tokenizer_config_path = None
+
+    if not spiece_path.exists():
+        raise FileNotFoundError(f"Missing SentencePiece model: {spiece_path}")
+
+    tokenizer_config = _read_tokenizer_config(tokenizer_config_path)
+    extra_ids = int(tokenizer_config.get("extra_ids", 100))
+
+    kwargs = {
+        "eos_token": tokenizer_config.get("eos_token", "</s>"),
+        "unk_token": tokenizer_config.get("unk_token", "<unk>"),
+        "pad_token": tokenizer_config.get("pad_token", "<pad>"),
+        "extra_ids": extra_ids,
+        "sp_model_kwargs": tokenizer_config.get("sp_model_kwargs", {}),
+    }
+
+    signature = inspect.signature(T5Tokenizer.__init__)
+    if "legacy" in signature.parameters:
+        kwargs["legacy"] = False
+    if "vocab_file" in signature.parameters:
+        kwargs["vocab_file"] = str(spiece_path)
+        tokenizer = T5Tokenizer(**kwargs)
+    elif "vocab" in signature.parameters:
+        kwargs["vocab"] = str(spiece_path)
+        tokenizer = T5Tokenizer(**kwargs)
+    else:
+        tokenizer = T5Tokenizer(str(spiece_path), **kwargs)
+
+    return tokenizer
+
+
+def _read_tokenizer_config(path: Path | None) -> dict[str, Any]:
+    if path is None or not path.exists():
+        return {}
+    with path.open("r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 def apply_lora_if_enabled(model, config: dict[str, Any]):
