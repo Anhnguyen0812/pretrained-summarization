@@ -1,0 +1,70 @@
+model:
+  name_or_path: deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
+  use_fast_tokenizer: true
+  trust_remote_code: false
+  cache_dir:
+  padding_side: right
+  torch_dtype: float16
+  max_parameters: 3000000000
+
+data:
+  train_file: ../train-00000-of-00001.parquet
+  valid_file: ../valid-00000-of-00001.parquet
+  max_source_length: 1024
+  max_target_length: 180
+  max_length: 1204
+  preprocessing_num_proc: 1
+  max_train_samples:
+  max_eval_samples:
+  prompt_template: "Bạn là hệ thống tóm tắt văn bản tiếng Việt. Chỉ viết bản tóm tắt cuối cùng, không viết suy luận, không giải thích, không dùng thẻ <think>. Tóm tắt văn bản sau thành một đoạn ngắn, giữ các ý chính, không bịa thông tin.\n\nVăn bản:\n{article}\n\nTóm tắt:\n"
+
+training:
+  output_dir: outputs/deepseek_r1_distill_qwen15b_lora
+  overwrite_output_dir: false
+  seed: 42
+  precision: fp16
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 8
+  num_train_epochs: 2
+  max_steps: -1
+  learning_rate: 0.0001
+  weight_decay: 0.01
+  warmup_ratio: 0.03
+  lr_scheduler_type: cosine
+  optim: adamw_torch
+  gradient_checkpointing: true
+  strategy: steps
+  save_strategy: steps
+  eval_steps: 500
+  save_steps: 500
+  logging_steps: 100
+  save_total_limit: 2
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss
+  greater_is_better: false
+  report_to:
+    - tensorboard
+  save_safetensors: true
+
+generation:
+  max_new_tokens: 180
+  num_beams: 4
+  do_sample: false
+  no_repeat_ngram_size: 3
+  repetition_penalty: 1.08
+
+lora:
+  enabled: true
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
