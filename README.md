@@ -125,6 +125,52 @@ python -m vn_summarization.evaluate `
   --predictions_path outputs/vit5_base/predictions_valid.jsonl
 ```
 
+## Evaluate Downloaded Kaggle Checkpoints On Local Test
+
+Download each Kaggle run folder with at least:
+
+- `resolved_config.json`
+- `best/adapter_config.json`
+- `best/adapter_model.safetensors`
+- tokenizer files inside `best/`
+
+Keep folders under one root, for example:
+
+```text
+downloaded_kaggle_runs/
+  qwen3_prompt_strict_r8_300s_report/
+    resolved_config.json
+    best/
+      adapter_config.json
+      adapter_model.safetensors
+      tokenizer.json
+      tokenizer_config.json
+  qwen3_all_on_r16_700s_report/
+    resolved_config.json
+    best/
+      ...
+```
+
+Then evaluate every downloaded run on `../test-00000-of-00001.parquet`:
+
+```powershell
+cd pretrained-summarization
+python -m pip install -e .
+python -m vn_summarization.evaluate_runs_on_test `
+  --runs_root ..\downloaded_kaggle_runs `
+  --test_file ..\test-00000-of-00001.parquet `
+  --out_dir ..\local_test_eval
+```
+
+For a quick local check before full test, add `--max_test_samples 50`. Full Qwen/DeepSeek generation on CPU is very slow; use CUDA locally if available.
+
+Outputs:
+
+- `local_test_eval/test_results.csv`
+- `local_test_eval/test_results.md`
+- `local_test_eval/best_test_run.json`
+- `local_test_eval/<run>/predictions_test.jsonl`
+
 Compare all finished runs:
 
 ```powershell
