@@ -9,6 +9,14 @@ import numpy as np
 def _postprocess_text(texts: list[str]) -> list[str]:
     return [text.strip() for text in texts]
 
+def _sanitize_token_ids(values, tokenizer):
+    ids = np.asarray(values)
+    pad_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
+    vocab_size = len(tokenizer)
+    ids = np.where(ids < 0, pad_token_id, ids)
+    ids = np.where(ids >= vocab_size, pad_token_id, ids)
+    return ids.astype(np.int64, copy=False)
+
 
 def build_compute_metrics(tokenizer) -> Callable[[Any], dict[str, float]]:
     rouge = evaluate.load("rouge")
@@ -18,8 +26,9 @@ def build_compute_metrics(tokenizer) -> Callable[[Any], dict[str, float]]:
         if isinstance(preds, tuple):
             preds = preds[0]
 
+        preds = _sanitize_token_ids(preds, tokenizer)
+        labels = _sanitize_token_ids(np.where(labels != -100, labels, tokenizer.pad_token_id), tokenizer)
         decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
-        labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
         decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
 
         decoded_preds = _postprocess_text(decoded_preds)

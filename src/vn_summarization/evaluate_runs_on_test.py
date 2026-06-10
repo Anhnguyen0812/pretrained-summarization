@@ -74,7 +74,10 @@ def prepare_test_config(
     config["data"]["max_eval_samples"] = int(max_test_samples) if max_test_samples else None
     if generation_max_new_tokens is not None:
         generation = config.setdefault("generation", {})
-        generation["max_new_tokens"] = int(generation_max_new_tokens)
+        if config.get("data", {}).get("prompt_template"):
+            generation["max_new_tokens"] = int(generation_max_new_tokens)
+        else:
+            generation.pop("max_new_tokens", None)
         generation["max_length"] = int(generation_max_new_tokens)
     if generation_num_beams is not None:
         config.setdefault("generation", {})["num_beams"] = int(generation_num_beams)

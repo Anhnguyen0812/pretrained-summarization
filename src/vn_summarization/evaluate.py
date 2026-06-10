@@ -8,7 +8,7 @@ from pathlib import Path
 from transformers import DataCollatorForSeq2Seq, Seq2SeqTrainer, Seq2SeqTrainingArguments
 
 from .data import ARTICLE_COL, SUMMARY_COL, clean_text, load_splits, maybe_select, preprocess_dataset
-from .metrics import build_compute_metrics
+from .metrics import _sanitize_token_ids, build_compute_metrics
 from .modeling import load_tokenizer_and_model
 from .utils import apply_overrides, configure_logging, load_yaml, save_json
 
@@ -24,6 +24,8 @@ def _trainer_processing_kwargs(tokenizer) -> dict:
 
 def evaluate_model(config: dict, config_path: Path, model_path: str, predictions_path: str | None):
     tokenizer, model = _load_eval_model(config, model_path)
+    if hasattr(model.generation_config, "max_new_tokens"):
+        model.generation_config.max_new_tokens = None
     raw_dataset = load_splits(config, config_path)
     tokenized = preprocess_dataset(raw_dataset, tokenizer, config)
     seed = int(config["training"].get("seed", 42))
@@ -54,7 +56,9 @@ def evaluate_model(config: dict, config_path: Path, model_path: str, predictions
     metrics = {key: float(value) for key, value in output.metrics.items()}
 
     if predictions_path:
-        preds = tokenizer.batch_decode(output.predictions, skip_special_tokens=True)
+        preds = tokenizer.batch_decode(
+            _sanitize_token_ids(output.predictions, tokenizer), skip_special_tokens=True
+        )
         out_path = Path(predictions_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         save_json(metrics, out_path.parent / "validation_metrics.json")
