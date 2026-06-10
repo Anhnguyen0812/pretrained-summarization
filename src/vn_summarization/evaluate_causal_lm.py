@@ -34,10 +34,15 @@ def _clean_generation(text: str) -> str:
     text = text.strip()
     if "</think>" in text:
         text = text.split("</think>", 1)[-1].strip()
-    if "Tóm tắt:" in text:
-        text = text.split("Tóm tắt:")[-1].strip()
+    summary_markers = ["Tóm tắt:", "Tom tat:", "TÃ³m táº¯t:"]
+    for marker in summary_markers:
+        if marker in text:
+            text = text.split(marker)[-1].strip()
+    article_markers = ["Văn bản:", "Van ban:", "VÄƒn báº£n:"]
+    for marker in article_markers:
+        if marker in text:
+            text = text.split(marker)[0].strip()
     return clean_text(text)
-
 
 def evaluate_model(config: dict[str, Any], config_path: Path, model_path: str, predictions_path: str):
     tokenizer, model = _load_model_for_eval(config, model_path)
