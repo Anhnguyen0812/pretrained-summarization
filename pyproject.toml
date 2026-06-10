@@ -21,8 +21,8 @@ dependencies = [
   "sentencepiece>=0.2.0",
   "tensorboard>=2.16.0",
   "torch>=2.3.0",
-  "tokenizers==0.20.3",
-  "transformers==4.46.3"
+  "tokenizers>=0.21,<0.22",
+  "transformers>=4.51.0,<5"
 ]
 
 [project.optional-dependencies]

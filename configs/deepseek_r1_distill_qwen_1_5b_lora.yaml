@@ -1,5 +1,5 @@
 model:
-  name_or_path: Qwen/Qwen2.5-1.5B-Instruct
+  name_or_path: deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
   use_fast_tokenizer: true
   trust_remote_code: false
   cache_dir:
@@ -10,24 +10,24 @@ model:
 data:
   train_file: ../train-00000-of-00001.parquet
   valid_file: ../valid-00000-of-00001.parquet
-  max_source_length: 1024
-  max_target_length: 180
-  max_length: 1204
+  max_source_length: 768
+  max_target_length: 128
+  max_length: 896
   preprocessing_num_proc: 1
-  max_train_samples:
-  max_eval_samples:
-  prompt_template: "Bạn là hệ thống tóm tắt văn bản tiếng Việt. Tóm tắt văn bản sau thành một đoạn ngắn, giữ các ý chính, không bịa thông tin, không giải thích.\n\nVăn bản:\n{article}\n\nTóm tắt:\n"
+  max_train_samples: 2500
+  max_eval_samples: 120
+  prompt_template: "Bạn là trợ lý tóm tắt tiếng Việt. Viết duy nhất một đoạn tóm tắt cuối cùng, không viết suy luận, không giải thích, không dùng thẻ <think>. Giữ tên riêng, số liệu, mốc thời gian quan trọng. Không thêm thông tin ngoài văn bản.\n\nVăn bản:\n{article}\n\nTóm tắt:\n"
 
 training:
-  output_dir: outputs/qwen25_15b_lora
+  output_dir: outputs/deepseek_r1_distill_qwen_1_5b_lora
   overwrite_output_dir: false
   seed: 42
   precision: fp16
   per_device_train_batch_size: 1
-  per_device_eval_batch_size: 1
+  per_device_eval_batch_size: 2
   gradient_accumulation_steps: 8
   num_train_epochs: 2
-  max_steps: -1
+  max_steps: 300
   learning_rate: 0.0001
   weight_decay: 0.01
   warmup_ratio: 0.03
@@ -36,9 +36,9 @@ training:
   gradient_checkpointing: true
   strategy: steps
   save_strategy: steps
-  eval_steps: 500
-  save_steps: 500
-  logging_steps: 100
+  eval_steps: 300
+  save_steps: 300
+  logging_steps: 25
   save_total_limit: 2
   load_best_model_at_end: true
   metric_for_best_model: eval_loss
@@ -48,16 +48,16 @@ training:
   save_safetensors: true
 
 generation:
-  max_new_tokens: 180
-  num_beams: 4
+  max_new_tokens: 128
+  num_beams: 1
   do_sample: false
   no_repeat_ngram_size: 3
   repetition_penalty: 1.08
 
 lora:
   enabled: true
-  r: 16
-  lora_alpha: 32
+  r: 8
+  lora_alpha: 16
   lora_dropout: 0.05
   target_modules:
     - q_proj
@@ -67,4 +67,3 @@ lora:
     - gate_proj
     - up_proj
     - down_proj
-

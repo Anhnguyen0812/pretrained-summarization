@@ -76,7 +76,7 @@ python -m pip install -q -e .
 python -m vn_summarization.train --config configs/vit5_base.yaml
 ```
 
-This repo pins `transformers==4.46.3` and `tokenizers==0.20.3`. Do not use Transformers v5 for ViT5; its tokenizer conversion path can fail on the legacy ViT5 tokenizer metadata.
+This repo uses `transformers>=4.51.0,<5` and `tokenizers>=0.21,<0.22`. Qwen3 needs Transformers 4.51+; keep Transformers below v5 because ViT5 tokenizer conversion can fail on legacy metadata.
 
 For Kaggle T4x2, prefer DDP through Accelerate:
 
