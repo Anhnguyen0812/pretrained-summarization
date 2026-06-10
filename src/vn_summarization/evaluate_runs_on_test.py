@@ -61,12 +61,23 @@ def has_model_artifacts(model_dir: Path) -> bool:
 
 
 def prepare_test_config(
-    config: dict[str, Any], test_file: Path, eval_dir: Path, max_test_samples: int | None
+    config: dict[str, Any],
+    test_file: Path,
+    eval_dir: Path,
+    max_test_samples: int | None,
+    generation_max_new_tokens: int | None,
+    generation_num_beams: int | None,
 ) -> dict[str, Any]:
     config = json.loads(json.dumps(config))
     config.setdefault("data", {})["valid_file"] = str(test_file)
     config.setdefault("training", {})["output_dir"] = str(eval_dir)
     config["data"]["max_eval_samples"] = int(max_test_samples) if max_test_samples else None
+    if generation_max_new_tokens is not None:
+        generation = config.setdefault("generation", {})
+        generation["max_new_tokens"] = int(generation_max_new_tokens)
+        generation["max_length"] = int(generation_max_new_tokens)
+    if generation_num_beams is not None:
+        config.setdefault("generation", {})["num_beams"] = int(generation_num_beams)
     return config
 
 
@@ -76,13 +87,17 @@ def evaluate_run(
     out_dir: Path,
     max_test_samples: int | None,
     eval_batch_size: int | None,
+    generation_max_new_tokens: int | None,
+    generation_num_beams: int | None,
 ) -> dict[str, Any]:
     config_path = run_dir / "resolved_config.json"
     config = load_json(config_path)
     kind = infer_kind(config)
     eval_dir = out_dir / run_dir.name
     eval_dir.mkdir(parents=True, exist_ok=True)
-    test_config = prepare_test_config(config, test_file, eval_dir, max_test_samples)
+    test_config = prepare_test_config(
+        config, test_file, eval_dir, max_test_samples, generation_max_new_tokens, generation_num_beams
+    )
     if eval_batch_size is not None:
         test_config.setdefault("training", {})["per_device_eval_batch_size"] = int(eval_batch_size)
     save_json(test_config, eval_dir / "resolved_test_config.json")
@@ -170,6 +185,8 @@ def main() -> None:
     parser.add_argument("--run_glob", default="*", help="Glob for run dirs under runs_root.")
     parser.add_argument("--max_test_samples", type=int, default=None)
     parser.add_argument("--eval_batch_size", type=int, default=None)
+    parser.add_argument("--generation_max_new_tokens", type=int, default=None)
+    parser.add_argument("--generation_num_beams", type=int, default=None)
     args = parser.parse_args()
 
     configure_logging()
@@ -181,7 +198,15 @@ def main() -> None:
         raise FileNotFoundError(f"No run dirs with resolved_config.json found under {runs_root}")
 
     rows = [
-        evaluate_run(run_dir, test_file, out_dir, args.max_test_samples, args.eval_batch_size)
+        evaluate_run(
+            run_dir,
+            test_file,
+            out_dir,
+            args.max_test_samples,
+            args.eval_batch_size,
+            args.generation_max_new_tokens,
+            args.generation_num_beams,
+        )
         for run_dir in run_dirs
     ]
     rows.sort(key=lambda row: to_float(row.get("rougeL")), reverse=True)
