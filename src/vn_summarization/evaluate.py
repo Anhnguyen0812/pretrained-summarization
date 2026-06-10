@@ -52,7 +52,6 @@ def evaluate_model(config: dict, config_path: Path, model_path: str, predictions
         num_beams=int(config.get("generation", {}).get("num_beams", 4)),
     )
     metrics = {key: float(value) for key, value in output.metrics.items()}
-    save_json(metrics, Path(model_path) / "validation_metrics.json")
 
     if predictions_path:
         preds = tokenizer.batch_decode(output.predictions, skip_special_tokens=True)
