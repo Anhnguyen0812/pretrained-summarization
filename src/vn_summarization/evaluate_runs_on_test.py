@@ -40,9 +40,24 @@ def infer_kind(config: dict[str, Any]) -> str:
 
 def model_path_for_run(run_dir: Path) -> Path:
     best = run_dir / "best"
-    if best.exists():
+    if best.exists() and has_model_artifacts(best):
         return best
+    checkpoints = sorted(
+        (path for path in run_dir.glob("checkpoint-*") if path.is_dir()),
+        key=lambda path: int(path.name.split("-")[-1]) if path.name.split("-")[-1].isdigit() else -1,
+        reverse=True,
+    )
+    for checkpoint in checkpoints:
+        if has_model_artifacts(checkpoint):
+            return checkpoint
     return run_dir
+
+
+def has_model_artifacts(model_dir: Path) -> bool:
+    return any(
+        (model_dir / name).exists()
+        for name in ["adapter_model.safetensors", "model.safetensors", "pytorch_model.bin"]
+    )
 
 
 def prepare_test_config(
