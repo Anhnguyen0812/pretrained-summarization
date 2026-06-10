@@ -56,7 +56,11 @@ def prepare_test_config(
 
 
 def evaluate_run(
-    run_dir: Path, test_file: Path, out_dir: Path, max_test_samples: int | None
+    run_dir: Path,
+    test_file: Path,
+    out_dir: Path,
+    max_test_samples: int | None,
+    eval_batch_size: int | None,
 ) -> dict[str, Any]:
     config_path = run_dir / "resolved_config.json"
     config = load_json(config_path)
@@ -64,6 +68,8 @@ def evaluate_run(
     eval_dir = out_dir / run_dir.name
     eval_dir.mkdir(parents=True, exist_ok=True)
     test_config = prepare_test_config(config, test_file, eval_dir, max_test_samples)
+    if eval_batch_size is not None:
+        test_config.setdefault("training", {})["per_device_eval_batch_size"] = int(eval_batch_size)
     save_json(test_config, eval_dir / "resolved_test_config.json")
 
     predictions_path = eval_dir / "predictions_test.jsonl"
@@ -148,6 +154,7 @@ def main() -> None:
     parser.add_argument("--out_dir", default="local_test_eval", help="Output folder for metrics/predictions.")
     parser.add_argument("--run_glob", default="*", help="Glob for run dirs under runs_root.")
     parser.add_argument("--max_test_samples", type=int, default=None)
+    parser.add_argument("--eval_batch_size", type=int, default=None)
     args = parser.parse_args()
 
     configure_logging()
@@ -158,7 +165,10 @@ def main() -> None:
     if not run_dirs:
         raise FileNotFoundError(f"No run dirs with resolved_config.json found under {runs_root}")
 
-    rows = [evaluate_run(run_dir, test_file, out_dir, args.max_test_samples) for run_dir in run_dirs]
+    rows = [
+        evaluate_run(run_dir, test_file, out_dir, args.max_test_samples, args.eval_batch_size)
+        for run_dir in run_dirs
+    ]
     rows.sort(key=lambda row: to_float(row.get("rougeL")), reverse=True)
     write_csv(rows, out_dir / "test_results.csv")
     write_markdown(rows, out_dir / "test_results.md")
