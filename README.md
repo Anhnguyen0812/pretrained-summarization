@@ -12,6 +12,48 @@ Both files must contain:
 - `article`: source document
 - `summary`: target summary
 
+## Kết quả fine-tune đã đạt được
+
+Dưới đây là kết quả fine-tune đã ghi nhận trong repo (tham khảo thêm tại [readme/12_ket_qua_va_dien_giai.md](readme/12_ket_qua_va_dien_giai.md)):
+
+| Mô hình | Validation ROUGE-1 | Validation ROUGE-2 | Validation ROUGE-L | Test ROUGE-1 | Test ROUGE-2 | Test ROUGE-L |
+|---|---:|---:|---:|---:|---:|---:|
+| Transformer scratch | 0.5768 | 0.2087 | 0.3053 | 0.5747 | 0.2038 | 0.3045 |
+| ViT5-base full fine-tuning | 0.7417 | 0.4709 | 0.4924 | 0.7422 | 0.4675 | 0.4889 |
+| ViT5-base LoRA rank 16 | 0.7297 | 0.4484 | 0.4733 | 0.7262 | 0.4408 | 0.4663 |
+| BARTpho-syllable full fine-tuning | - | - | - | 0.7347 | 0.4617 | 0.4807 |
+| ViT5 VietNews warm start | - | - | - | 0.7161 | 0.4426 | 0.4728 |
+
+Kết luận nhanh: ViT5-base full fine-tuning là cấu hình mạnh nhất trong các thí nghiệm hiện có, với ROUGE-L test khoảng 0.4889.
+
+## Kết quả các mô hình causal LM
+
+Các số dưới đây được trích từ báo cáo LaTeX và phản ánh các thí nghiệm ablation trên tập con validation cố định (500 mẫu), nên không nên so sánh trực tiếp với kết quả full validation/test ở bảng trên.
+
+| Mô hình / cấu hình | Ngữ cảnh | LoRA rank | Mẫu train | ROUGE-1 | ROUGE-2 | ROUGE-L |
+|---|---:|---:|---:|---:|---:|---:|
+| Qwen3, prompt cơ bản | 768 | 8 | 2500 | 0.5938 | 0.2729 | 0.3379 |
+| Qwen3, prompt nghiêm ngặt | 768 | 8 | 2500 | 0.6044 | 0.2682 | 0.3333 |
+| Qwen3, prompt nghiêm ngặt | 768 | 16 | 2500 | 0.6565 | 0.2987 | 0.3611 |
+| Qwen3, prompt nghiêm ngặt | 1024 | 8 | 2500 | 0.6652 | 0.3122 | 0.3792 |
+| Qwen3, prompt nghiêm ngặt, thêm dữ liệu, beam 2 | 1024 | 16 | 7000 | 0.6834 | 0.3213 | 0.3787 |
+| DeepSeek-R1-Distill-Qwen-1.5B | 768 | 8 | 2500 | 0.4481 | 0.1695 | 0.2619 |
+
+Nhận xét quan trọng từ báo cáo:
+
+- Tăng ngữ cảnh từ 768 lên 1024 token là cải tiến hiệu quả nhất trong các thí nghiệm causal LM quan sát được.
+- Tăng LoRA rank giúp cải thiện ROUGE-1/2, nhưng không tiếp tục nâng ROUGE-L một cách rõ rệt.
+- DeepSeek-R1-Distill-Qwen-1.5B thấp hơn Qwen3 trong các thí nghiệm này.
+
+## Minh chứng Kaggle
+
+Các notebook Kaggle dùng để chạy/đánh giá các thí nghiệm này:
+
+- [NLP_sumarization_Causal_LM](https://www.kaggle.com/code/anhnguyen0812/nlp-sumarization-causal-lm)
+- [nlp-finetune](https://www.kaggle.com/code/anhnguyen0812/nlp-finetune)
+- [continue](https://www.kaggle.com/code/anhnguyenphi/continue)
+- [test-nlp](https://www.kaggle.com/code/anhnguyenphi/test-nlp)
+
 ## Environment
 
 Recommended: Python 3.10 or 3.11 with CUDA GPU. Local CPU can run only smoke tests.
