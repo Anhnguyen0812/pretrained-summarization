@@ -1,0 +1,623 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+% ===== Packages =====
+\usepackage[utf8]{inputenc}
+% T5 must be the active font encoding for Vietnamese diacritics under pdfLaTeX.
+\usepackage[T5]{fontenc}
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{balance}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,shapes.geometric}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+\pagestyle{plain}
+\pagenumbering{arabic}
+
+\title{Tóm tắt văn bản hướng trừu tượng sử dụng Transformer cài đặt từ đầu và mô hình ngôn ngữ tiền huấn luyện được tinh chỉnh}
+
+\author{
+\IEEEauthorblockN{Mai Kha Anh, Nguyen Ngoc Dinh, Nguyen Thac Cuong, Nguyen Phi Anh}
+\IEEEauthorblockA{\textit{Khoa Công nghệ Thông tin} \\
+\textit{Trường Đại học Công nghệ, Đại học Quốc gia Hà Nội}\\
+Hà Nội, Việt Nam \\
+Email: \{23020006, 23020009, 23030018, 23020021\}@vnu.edu.vn}
+}
+
+\maketitle
+\thispagestyle{plain}
+
+\begin{abstract}
+Tóm tắt văn bản hướng trừu tượng nhằm sinh ra một bản tóm tắt ngắn gọn nhưng vẫn bảo toàn thông tin chính của văn bản đầu vào dài. Trong đồ án này, chúng tôi khảo sát hai hướng tiếp cận cho bài toán tóm tắt hướng trừu tượng tiếng Việt. Hướng thứ nhất là một Transformer sequence-to-sequence gồm 11,47 triệu tham số, được cài đặt từ đầu bằng PyTorch. Hướng thứ hai tinh chỉnh toàn bộ mô hình encoder-decoder tiền huấn luyện tiếng Việt ViT5-base gồm 227,72 triệu tham số. Chúng tôi đồng thời khảo sát tinh chỉnh hiệu quả tham số bằng LoRA, BARTpho, một checkpoint đã được khởi tạo cho bài toán tóm tắt, Qwen3-1.7B với LoRA, thiết kế prompt, độ dài ngữ cảnh và các cấu hình giải mã. Trên toàn bộ tập kiểm thử, Transformer huấn luyện từ đầu đạt ROUGE-1/2/L lần lượt là 0.5747/0.2038/0.3045, trong khi ViT5-base đạt 0.7422/0.4675/0.4889. Kết quả cho thấy lợi ích lớn của tiền huấn luyện chuyên biệt cho tiếng Việt, đồng thời thể hiện sự đánh đổi giữa hiệu quả và chất lượng của LoRA cũng như tầm quan trọng của độ dài ngữ cảnh đối với mô hình ngôn ngữ nhân quả.
+\end{abstract}
+
+\begin{IEEEkeywords}
+tóm tắt hướng trừu tượng, Transformer, học sequence-to-sequence, mô hình ngôn ngữ tiền huấn luyện, ROUGE, xử lý ngôn ngữ tự nhiên tiếng Việt
+\end{IEEEkeywords}
+
+% =========================================================
+\section{Giới thiệu}
+Tóm tắt văn bản là một bài toán quan trọng trong xử lý ngôn ngữ tự nhiên (NLP), với mục tiêu rút gọn một tài liệu dài thành phiên bản ngắn hơn trong khi vẫn giữ lại những thông tin quan trọng nhất. Các hệ thống tóm tắt hữu ích trong tổng hợp tin tức, tìm kiếm tài liệu, truy hồi thông tin, giáo dục và trợ lý số. So với tóm tắt hướng trích xuất, vốn lựa chọn trực tiếp các câu quan trọng từ văn bản nguồn, tóm tắt hướng trừu tượng sinh ra các câu mới và có thể tạo ra bản tóm tắt tự nhiên, súc tích hơn.
+
+Trong đồ án này, chúng tôi tập trung vào tóm tắt văn bản hướng trừu tượng. Với văn bản đầu vào $X = (x_1, x_2, \ldots, x_m)$, hệ thống cần sinh ra bản tóm tắt đích ngắn hơn $Y = (y_1, y_2, \ldots, y_n)$, trong đó $n < m$ ở phần lớn trường hợp. Bản tóm tắt được sinh cần trôi chảy, súc tích và trung thành với nội dung gốc.
+
+Đồ án yêu cầu thực hiện song song hai hướng tiếp cận. Hướng thứ nhất là xây dựng và huấn luyện một mô hình Transformer từ đầu. Điều này có nghĩa các thành phần cốt lõi, gồm attention đa đầu, mã hóa vị trí, encoder, decoder và mạng truyền thẳng, phải được cài đặt thủ công bằng các mô-đun PyTorch cơ bản, không sử dụng trực tiếp mô-đun mức cao như \texttt{nn.Transformer}. Hướng thứ hai là tinh chỉnh một mô hình ngôn ngữ tiền huấn luyện có ít hơn 3 tỷ tham số.
+
+Các đóng góp chính của đồ án gồm:
+\begin{itemize}
+    \item Cài đặt hoàn chỉnh kiến trúc Transformer encoder-decoder từ đầu cho bài toán tóm tắt hướng trừu tượng.
+    \item Xây dựng toàn bộ quy trình dữ liệu, gồm làm sạch văn bản, chuyển đổi JSONL, huấn luyện tokenizer subword, tạo bộ nhớ đệm token hóa và tạo mask cho mini-batch.
+    \item Cài đặt các cải tiến huấn luyện và giải mã thực tiễn như khối Pre-LN, label smoothing, dùng chung embedding, weight tying, lịch warmup, gradient clipping, beam search, length penalty và chặn n-gram lặp lại.
+    \item Đánh giá Transformer đã huấn luyện bằng các độ đo ROUGE, thống kê lặp, so sánh phương pháp giải mã trên tập validation và tập test công khai.
+    \item Tinh chỉnh toàn bộ ViT5-base và so sánh với ViT5 LoRA, BARTpho, checkpoint ViT5 đã được khởi tạo cho tóm tắt và các mô hình ngôn ngữ nhân quả được thích nghi bằng LoRA trong giới hạn 3 tỷ tham số của đề bài.
+    \item Thực hiện các thí nghiệm loại bỏ có kiểm soát với Qwen3 về thiết kế prompt, hạng LoRA, độ dài ngữ cảnh và kích thước tập huấn luyện trên các tập con validation.
+\end{itemize}
+
+% =========================================================
+\section{Công trình liên quan}
+Các hệ thống tóm tắt nơ-ron ban đầu thường dựa trên mạng nơ-ron hồi quy và kiến trúc sequence-to-sequence có cơ chế attention. Các mô hình này mã hóa chuỗi đầu vào thành biểu diễn ẩn và giải mã bản tóm tắt theo từng token. Tuy nhiên, mô hình hồi quy khó song song hóa và có thể gặp khó khăn với các phụ thuộc xa.
+
+Kiến trúc Transformer do Vaswani và cộng sự đề xuất thay thế tính hồi quy bằng self-attention, cho phép mô hình nắm bắt hiệu quả hơn quan hệ phụ thuộc giữa các vị trí bất kỳ trong chuỗi. Transformer nguyên bản gồm một chồng encoder và một chồng decoder; mỗi lớp chứa các cơ chế attention, mạng truyền thẳng, kết nối phần dư và chuẩn hóa lớp. Cài đặt của chúng tôi giữ nguyên cấu trúc encoder-decoder này và cài đặt thủ công các thành phần cốt lõi, đồng thời sử dụng một số điều chỉnh hướng tới huấn luyện được mô tả rõ trong phần phương pháp.
+
+Các mô hình ngôn ngữ tiền huấn luyện tiếp tục cải thiện nhiều bài toán NLP nhờ học biểu diễn đa dụng từ kho ngữ liệu quy mô lớn. Những mô hình như BART \cite{lewis2020bart}, T5, mBART và PEGASUS \cite{zhang2020pegasus} được sử dụng rộng rãi cho tóm tắt vì chúng được tiền huấn luyện với mục tiêu khử nhiễu hoặc sequence-to-sequence. Tinh chỉnh các mô hình này trên tập dữ liệu tóm tắt hạ nguồn thường cho kết quả tốt hơn huấn luyện mô hình từ đầu, đặc biệt khi dữ liệu của bài toán còn hạn chế.
+
+Đối với sinh văn bản tiếng Việt, ViT5 điều chỉnh khung encoder-decoder text-to-text của T5 trên kho ngữ liệu tiếng Việt lớn và đạt hiệu năng tóm tắt hướng trừu tượng cao \cite{phan2022vit5}. BARTpho là mô hình sequence-to-sequence đơn ngữ tiếng Việt dựa trên mục tiêu khử nhiễu của BART \cite{tran2022bartpho}. Chúng tôi chọn ViT5-base làm mô hình tiền huấn luyện chính vì kiến trúc của nó phù hợp trực tiếp với sinh tóm tắt có điều kiện và quá trình tiền huấn luyện chuyên biệt cho tiếng Việt phù hợp với tập dữ liệu.
+
+Các phương pháp tinh chỉnh hiệu quả tham số làm giảm chi phí thích nghi mô hình tiền huấn luyện lớn. LoRA đóng băng trọng số gốc và học các ma trận cập nhật hạng thấp, nhờ đó giảm mạnh số tham số có thể huấn luyện \cite{hu2022lora}. Chúng tôi áp dụng LoRA cho cả ViT5 và các mô hình ngôn ngữ nhân quả. Qwen3 được đưa vào như một đối chứng mô hình ngôn ngữ nhân quả đa ngôn ngữ vì phiên bản dense 1.7B đáp ứng giới hạn tham số của đề bài và hỗ trợ sinh văn bản dựa trên chỉ dẫn \cite{yang2025qwen3}.
+
+% =========================================================
+\section{Phương pháp}
+
+\subsection{Phát biểu bài toán}
+Bài toán được mô hình hóa dưới dạng sinh chuỗi có điều kiện. Với văn bản nguồn $X$, mô hình ước lượng xác suất của bản tóm tắt đích $Y$ như sau:
+\begin{equation}
+P(Y|X) = \prod_{t=1}^{n} P(y_t | y_{<t}, X).
+\end{equation}
+Trong quá trình huấn luyện, kỹ thuật teacher forcing được sử dụng, trong đó decoder nhận các token nhãn đúng trước đó. Khi suy luận, bản tóm tắt được sinh tự hồi quy cho tới khi tạo ra token kết thúc chuỗi hoặc đạt độ dài giải mã tối đa.
+
+\subsection{Token hóa và xử lý dữ liệu}
+Chúng tôi sử dụng tokenizer subword SentencePiece BPE được huấn luyện trên kho ngữ liệu huấn luyện đã cung cấp. Quy trình tiền xử lý trước hết kiểm tra các tệp parquet, chuẩn hóa mỗi mẫu thành một cặp nguồn--đích, loại bỏ các mẫu không hợp lệ hoặc quá ngắn và lưu dữ liệu đã làm sạch dưới dạng tệp JSONL. Sau đó, tokenizer chuyển văn bản đầu vào và bản tóm tắt đích thành chuỗi ID token. Các token đặc biệt gồm \texttt{<PAD>}, \texttt{<UNK>}, \texttt{<BOS>} và \texttt{<EOS>}. Văn bản dài được cắt theo độ dài nguồn tối đa, còn bản tóm tắt được cắt theo độ dài đích tối đa. Các mẫu đã token hóa được lưu đệm dưới dạng tệp pickle để tránh lặp lại bước tiền xử lý trong khi huấn luyện.
+
+\begin{itemize}
+    \item Loại tokenizer: SentencePiece BPE
+    \item Kích thước từ vựng: 16000
+    \item Độ dài nguồn tối đa: 512 token
+    \item Độ dài đích tối đa: 128 token
+    \item Quy tắc lọc: nguồn dài từ 30 đến 900 từ, đích dài từ 3 đến 180 từ và tỷ lệ độ dài đích/nguồn không quá 0.9
+    \item Số mẫu huấn luyện: 10775
+    \item Số mẫu validation: 1349
+    \item Số mẫu test: 1344
+\end{itemize}
+
+\subsection{Transformer huấn luyện từ đầu}
+Mô hình thứ nhất là một Transformer encoder-decoder được cài đặt từ đầu. Mô hình tuân theo thiết kế encoder-decoder chính của Transformer trong \cite{vaswani2017attention}: embedding token, mã hóa vị trí hình sin, attention đa đầu, mạng truyền thẳng, kết nối phần dư, các chồng encoder và decoder, cùng phép chiếu cuối ra từ vựng. Để tăng tính ổn định khi huấn luyện và chất lượng tóm tắt, mô hình được cài đặt chủ động sử dụng các khối Pre-LN, hàm kích hoạt GELU, embedding dùng chung cho nguồn và đích, weight tying ở đầu ra, label smoothing, lịch warmup, beam search, length penalty và chặn n-gram lặp lại. Các thay đổi này được trình bày như những cải tiến cài đặt thay vì các thành phần chính xác của bài báo gốc.
+
+\begin{figure*}[htbp]
+\centering
+\resizebox{0.95\textwidth}{!}{%
+\begin{tikzpicture}[
+    font=\small,
+    box/.style={draw, rounded corners=2pt, align=center, minimum width=2.4cm, minimum height=0.85cm, fill=blue!6},
+    block/.style={draw, rounded corners=2pt, align=center, minimum width=3.0cm, minimum height=1.0cm, fill=green!7},
+    attn/.style={draw, rounded corners=2pt, align=center, minimum width=3.0cm, minimum height=1.0cm, fill=orange!10},
+    io/.style={draw, trapezium, trapezium left angle=75, trapezium right angle=105, align=center, minimum width=2.5cm, minimum height=0.8cm, fill=gray!10},
+    arrow/.style={-Latex, thick}
+]
+\node[io] (src) {Văn bản\\nguồn};
+\node[box, right=1.0cm of src] (src_tok) {ID token\\BPE};
+\node[box, right=1.0cm of src_tok] (src_emb) {Embedding token\\+ mã hóa vị trí};
+\node[attn, right=1.0cm of src_emb] (enc_attn) {Self-attention\\đa đầu};
+\node[block, right=0.9cm of enc_attn] (enc_ffn) {Mạng\\truyền thẳng};
+\node[block, right=0.9cm of enc_ffn] (memory) {Bộ nhớ encoder};
+
+\node[io, below=2.0cm of src] (tgt) {Các token tóm tắt\\trước đó};
+\node[box, right=1.0cm of tgt] (tgt_tok) {Đích dịch phải\\BOS..$y_{t-1}$};
+\node[box, right=1.0cm of tgt_tok] (tgt_emb) {Embedding token\\+ mã hóa vị trí};
+\node[attn, right=1.0cm of tgt_emb] (dec_self) {Self-attention\\có mask};
+\node[attn, right=0.9cm of dec_self] (cross) {Attention\\encoder-decoder};
+\node[block, right=0.9cm of cross] (dec_ffn) {Mạng\\truyền thẳng};
+\node[box, right=0.9cm of dec_ffn] (softmax) {Tuyến tính +\\softmax};
+\node[io, right=0.8cm of softmax] (out) {Phân phối\\token tiếp theo};
+
+\draw[arrow] (src) -- (src_tok);
+\draw[arrow] (src_tok) -- (src_emb);
+\draw[arrow] (src_emb) -- (enc_attn);
+\draw[arrow] (enc_attn) -- (enc_ffn);
+\draw[arrow] (enc_ffn) -- (memory);
+\draw[arrow] (tgt) -- (tgt_tok);
+\draw[arrow] (tgt_tok) -- (tgt_emb);
+\draw[arrow] (tgt_emb) -- (dec_self);
+\draw[arrow] (dec_self) -- (cross);
+\draw[arrow] (cross) -- (dec_ffn);
+\draw[arrow] (dec_ffn) -- (softmax);
+\draw[arrow] (softmax) -- (out);
+\draw[arrow] (memory) |- (cross);
+
+\node[draw, dashed, rounded corners=3pt, fit=(enc_attn)(enc_ffn), inner sep=6pt, label=above:{Lớp encoder lặp lại $N$ lần}] {};
+\node[draw, dashed, rounded corners=3pt, fit=(dec_self)(cross)(dec_ffn), inner sep=6pt, label=below:{Lớp decoder lặp lại $N$ lần}] {};
+\end{tikzpicture}
+}
+\caption{Kiến trúc Transformer encoder-decoder huấn luyện từ đầu dùng cho tóm tắt hướng trừu tượng. Padding mask được dùng trong encoder và cross-attention, trong khi causal mask được dùng trong self-attention của decoder.}
+\label{fig:architecture}
+\end{figure*}
+
+\subsubsection{Embedding và mã hóa vị trí}
+Do Transformer không có tính hồi quy hoặc phép tích chập, thông tin vị trí phải được đưa vào embedding token. Với vị trí $pos$ và chiều $i$, mã hóa vị trí hình sin được định nghĩa như sau:
+\begin{equation}
+PE_{(pos, 2i)} = \sin\left(\frac{pos}{10000^{2i/d_{model}}}\right),
+\end{equation}
+\begin{equation}
+PE_{(pos, 2i+1)} = \cos\left(\frac{pos}{10000^{2i/d_{model}}}\right).
+\end{equation}
+Biểu diễn đầu vào được tạo bằng cách cộng embedding token với mã hóa vị trí. Trong cài đặt của chúng tôi, embedding nguồn và đích được dùng chung vì cả hai chuỗi đều là văn bản tiếng Việt; phép chiếu đầu ra được buộc chung trọng số với ma trận embedding đích nhằm giảm số tham số và cải thiện khả năng tổng quát hóa.
+
+\subsubsection{Scaled dot-product attention}
+Phép toán cốt lõi của Transformer là scaled dot-product attention:
+\begin{equation}
+\mathrm{Attention}(Q,K,V) = \mathrm{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V,
+\end{equation}
+trong đó $Q$, $K$ và $V$ lần lượt là các ma trận query, key và value; $d_k$ là số chiều của vector key. Padding mask được áp dụng để bỏ qua các token đệm, còn causal mask được dùng trong decoder nhằm ngăn mô hình chú ý đến các token đích ở tương lai.
+
+\subsubsection{Attention đa đầu}
+Thay vì tính một hàm attention duy nhất, attention đa đầu chiếu đầu vào vào nhiều không gian con biểu diễn:
+\begin{equation}
+\mathrm{head}_i = \mathrm{Attention}(QW_i^Q, KW_i^K, VW_i^V),
+\end{equation}
+\begin{equation}
+\mathrm{MultiHead}(Q,K,V) = \mathrm{Concat}(\mathrm{head}_1, \ldots, \mathrm{head}_h)W^O.
+\end{equation}
+Điều này cho phép mô hình đồng thời chú ý đến các quan hệ ngữ nghĩa và vị trí khác nhau.
+
+\subsubsection{Mạng truyền thẳng theo từng vị trí}
+Mỗi lớp encoder và decoder chứa một mạng truyền thẳng áp dụng theo từng vị trí:
+\begin{equation}
+\mathrm{FFN}(x) = \mathrm{GELU}(xW_1 + b_1)W_2 + b_2.
+\end{equation}
+Cùng một mạng truyền thẳng được áp dụng độc lập tại mỗi vị trí. Transformer nguyên bản sử dụng ReLU, trong khi cài đặt của chúng tôi sử dụng GELU như một điều chỉnh thực tiễn nhỏ.
+
+\subsubsection{Lớp encoder}
+Mỗi lớp encoder chứa một lớp con self-attention đa đầu, sau đó là một lớp con truyền thẳng. Cài đặt của chúng tôi sử dụng biến thể Pre-LN, trong đó chuẩn hóa lớp được áp dụng trước mỗi lớp con để quá trình tối ưu ổn định hơn:
+\begin{equation}
+\tilde{x} = x + \mathrm{SelfAttention}(\mathrm{LayerNorm}(x)),
+\end{equation}
+\begin{equation}
+z = \tilde{x} + \mathrm{FFN}(\mathrm{LayerNorm}(\tilde{x})).
+\end{equation}
+
+\subsubsection{Lớp decoder}
+Mỗi lớp decoder chứa ba lớp con: self-attention có mask, attention encoder-decoder và mạng truyền thẳng. Self-attention có mask bảo đảm token $y_t$ chỉ phụ thuộc vào các token đích trước đó. Attention encoder-decoder cho phép decoder chú ý đến văn bản nguồn đã được mã hóa. Decoder cũng tuân theo cấu trúc Pre-LN với kết nối phần dư và dropout quanh mỗi lớp con.
+
+\subsubsection{Hàm mục tiêu huấn luyện}
+Mô hình được huấn luyện bằng hàm mất mát cross-entropy trên chuỗi đích. Khi huấn luyện, chuỗi đích được dịch vị trí: đầu vào decoder là \texttt{BOS..token\_n-1}, còn nhãn là \texttt{token\_1..EOS}. Các token đệm bị bỏ qua khi tính mất mát và label smoothing được dùng để giảm sự quá tự tin:
+\begin{equation}
+\mathcal{L} = -\sum_{t=1}^{n} \log P(y_t | y_{<t}, X).
+\end{equation}
+Bộ tối ưu là AdamW với warmup tuyến tính theo kiểu Transformer, sau đó giảm theo nghịch đảo căn bậc hai. Gradient được cắt để tránh cập nhật thiếu ổn định trên các văn bản dài.
+
+\subsection{Tinh chỉnh mô hình tiền huấn luyện}
+Mô hình chính cho hướng tiếp cận thứ hai là \texttt{VietAI/vit5-base}, một Transformer text-to-text tiếng Việt dựa trên kiến trúc encoder-decoder T5 \cite{raffel2020t5,phan2022vit5}. Checkpoint được tải có 227.720.448 tham số, thấp hơn nhiều so với giới hạn 3 tỷ tham số của đề bài. ViT5 được lựa chọn vì được tiền huấn luyện riêng cho tiếng Việt, hỗ trợ trực tiếp sinh sequence-to-sequence và đã thể hiện hiệu năng cao trong tóm tắt tiếng Việt.
+
+Mỗi bài viết được thêm tiền tố \texttt{summarize:} và token hóa với tối đa 768 token nguồn; bản tóm tắt đích được giới hạn ở 160 token. Chúng tôi tinh chỉnh toàn bộ tham số ViT5 với hàm mục tiêu cross-entropy sequence-to-sequence sử dụng teacher forcing. Quá trình huấn luyện dùng AdamW, learning rate cực đại $3\times10^{-5}$, cosine decay, tỷ lệ warmup 0.06, weight decay 0.01, label smoothing 0.1, dropout 0.1, gradient checkpointing và ba epoch. Checkpoint được lựa chọn theo ROUGE-L trên validation. Cấu hình sinh cuối cùng dùng beam size 4, length penalty 1.0, repetition penalty 1.05 và chặn 3-gram lặp lại.
+
+Chúng tôi cũng đánh giá phương pháp tinh chỉnh hiệu quả tham số LoRA. Với ma trận trọng số gốc $W$, LoRA đóng băng $W$ và học một cập nhật hạng thấp:
+\begin{equation}
+W' = W + \frac{\alpha}{r}BA,
+\end{equation}
+trong đó $A$ và $B$ là các ma trận có thể huấn luyện, còn $r$ là hạng. ViT5 LoRA sử dụng hạng 16, $\alpha=32$ và dropout 0.05 trên các phép chiếu query và value. Phương pháp này chỉ huấn luyện 1.769.472 tham số, tương đương 0.777\% mô hình 227,72 triệu tham số.
+
+Trong một nhánh cải tiến bổ sung, chúng tôi thích nghi Qwen3-1.7B bằng LoRA. Đầu vào chứa chỉ dẫn tóm tắt bằng tiếng Việt, theo sau là bài viết; nhãn của các token chỉ dẫn và bài viết được mask bằng $-100$, do đó mất mát chỉ được tính trên các token tóm tắt. Các thí nghiệm có kiểm soát so sánh prompt cơ bản với prompt yêu cầu tính trung thành nghiêm ngặt, hạng LoRA 8 và 16, ngữ cảnh nguồn 768 và 1024 token, cùng các kích thước tập huấn luyện khác nhau. Nhánh mô hình ngôn ngữ nhân quả này được báo cáo riêng vì các thí nghiệm validation và test sử dụng tập con để tiết kiệm chi phí tính toán.
+
+BARTpho-syllable và \texttt{VietAI/vit5-base-vietnews-summarization} được đánh giá như các đối chứng sequence-to-sequence bổ sung. Vì checkpoint thứ hai đã được thích nghi cho tóm tắt tin tức tiếng Việt, nó được xem là một thí nghiệm warm start thay vì baseline chính.
+
+\subsection{Các cải tiến phương pháp}
+Để cải thiện hệ thống Transformer huấn luyện từ đầu, chúng tôi cài đặt một số kỹ thuật thực tiễn.
+
+Các kỹ thuật sau được cài đặt trong mã nguồn hiện tại cho Transformer huấn luyện từ đầu:
+\begin{itemize}
+    \item \textbf{Giải mã beam search}: xét nhiều bản tóm tắt ứng viên khi suy luận thay vì chỉ chọn token có xác suất cao nhất ở mỗi bước.
+    \item \textbf{Dropout}: giảm overfitting trong các lớp attention, embedding và truyền thẳng.
+    \item \textbf{Learning-rate warmup}: ổn định giai đoạn đầu huấn luyện Transformer, sau đó giảm theo nghịch đảo căn bậc hai.
+    \item \textbf{Label smoothing}: ngăn mô hình trở nên quá tự tin.
+    \item \textbf{Dùng chung embedding và weight tying}: giảm số lượng tham số có thể huấn luyện.
+    \item \textbf{Gradient clipping}: hạn chế các đỉnh gradient trong quá trình huấn luyện.
+    \item \textbf{Chặn n-gram lặp lại}: hạn chế bản tóm tắt được sinh bị lặp.
+\end{itemize}
+
+Đối với hướng tiền huấn luyện, các cải tiến và so sánh chính gồm:
+\begin{itemize}
+    \item \textbf{Tinh chỉnh toàn bộ so với LoRA}: đo lường sự đánh đổi chất lượng--hiệu quả khi chỉ 0.777\% tham số ViT5 có thể huấn luyện.
+    \item \textbf{So sánh mô hình tiếng Việt}: so sánh ViT5-base với BARTpho-syllable và checkpoint ViT5 đã được thích nghi cho tóm tắt tin tức tiếng Việt.
+    \item \textbf{Thí nghiệm loại bỏ về prompt và ngữ cảnh của causal LM}: kiểm tra chỉ dẫn nghiêm ngặt, hạng LoRA, ngữ cảnh dài hơn và dữ liệu huấn luyện bổ sung cho Qwen3-1.7B.
+    \item \textbf{Phân tích độ nhạy giải mã}: so sánh beam size, length penalty và giới hạn độ dài đầu ra trên cùng checkpoint ViT5.
+\end{itemize}
+
+% =========================================================
+\section{Thí nghiệm và kết quả}
+
+\subsection{Tập dữ liệu}
+Tập dữ liệu do giảng viên môn học cung cấp. Mỗi mẫu chứa hai trường: \texttt{article} lưu văn bản nguồn và \texttt{summary} lưu bản tóm tắt tham chiếu. Chúng tôi chỉ thực hiện phân tích mô tả trên tập train và validation. Tập test độc lập có cùng cấu trúc hai trường và chỉ được sử dụng một lần để đánh giá cuối cùng; không có mẫu hoặc thống kê nào từ tập test được dùng để huấn luyện, lựa chọn mô hình hay phân tích dữ liệu.
+
+\begin{table}[htbp]
+\centering
+\caption{Thống kê độ dài train/validation theo đơn vị từ Unicode.}
+\label{tab:dataset}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lrrrr}
+\toprule
+Tập & Số mẫu & Bài viết TB/trung vị/P90 & Tóm tắt TB/trung vị/P90 & Tỷ lệ nén \\
+\midrule
+Train & 10775 & 463.0/449/620 & 103.8/101/135 & 0.232 \\
+Validation & 1349 & 471.2/455/632 & 103.3/101/135 & 0.227 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+Hai tập được phân tích có phân phối gần tương đồng. Trung bình một bài viết nguồn chứa khoảng 463--471 từ, trong khi một bản tóm tắt tham chiếu chứa khoảng 103 từ và giữ lại xấp xỉ 23\% độ dài nguồn. Độ dài bài viết tại phân vị 90 lần lượt là 620 và 632 từ đối với train và validation, cho thấy nhiều mẫu yêu cầu xử lý lượng thông tin lớn hơn đáng kể so với đoạn mở đầu.
+
+\begin{table}[htbp]
+\centering
+\caption{Đặc trưng bài viết--tóm tắt trên train và validation.}
+\label{tab:dataset_overlap}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lrr}
+\toprule
+Chỉ số & Train & Validation \\
+\midrule
+Recall unigram tóm tắt trùng với bài viết & 0.9226 & 0.9251 \\
+Recall bigram tóm tắt trùng với bài viết & 0.6814 & 0.6899 \\
+Tỷ lệ unigram mới trong tóm tắt & 0.0643 & 0.0622 \\
+Tỷ lệ bigram mới trong tóm tắt & 0.3106 & 0.3023 \\
+Độ phủ tóm tắt bởi 25\% đầu bài viết & 0.5034 & 0.5131 \\
+Độ phủ tóm tắt bởi 50\% đầu bài viết & 0.7292 & 0.7351 \\
+Tham chiếu dài hơn 128 từ & 15.53\% & 15.05\% \\
+Tham chiếu dài hơn 160 từ & 0.29\% & 0.30\% \\
+Số trong tham chiếu được hỗ trợ bởi bài viết & 97.28\% & 96.93\% \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+Các bản tham chiếu mang tính trừu tượng nhưng bám sát nguồn. Trên validation, 92.51\% unigram và 68.99\% bigram của tham chiếu xuất hiện trong bài viết tương ứng, trong khi 30.23\% bigram tóm tắt là mới. Vì vậy, một hệ thống tốt vừa phải bảo toàn các cụm từ nguồn, vừa phải tổ chức lại chúng thành đầu ra súc tích. Chỉ 51.31\% unigram tóm tắt được bao phủ bởi một phần tư đầu bài viết, tăng lên 73.51\% với nửa đầu bài viết; do đó nội dung ở phần sau vẫn quan trọng. Tính trung thành về số liệu cũng là yếu tố cốt lõi vì 96.93\% các con số xuất hiện trong bản tóm tắt validation được bài viết nguồn hỗ trợ.
+
+Sự tương đồng train/validation hỗ trợ lựa chọn mô hình ổn định trên validation. Điểm ROUGE cuối cùng trên validation và test độc lập cũng gần nhau đối với cả Transformer huấn luyện từ đầu và ViT5, cho thấy không có dịch chuyển phân phối lớn trong cách chia tập do giảng viên cung cấp mà không cần thực hiện phân tích mô tả nội dung test.
+\subsection{Thiết lập thí nghiệm}
+Cài đặt được xây dựng dựa trên PyTorch và Hugging Face Transformers. Các thí nghiệm chạy trên một phiên Kaggle với hai GPU Tesla T4, mỗi GPU có 15\,GB bộ nhớ. Transformer huấn luyện từ đầu được khởi tạo ngẫu nhiên. ViT5 và các mô hình tiền huấn luyện khác được thích nghi từ checkpoint công khai; tất cả mô hình được báo cáo đều dưới 3 tỷ tham số. Trừ khi có nêu rõ sử dụng tập con, kết quả validation dùng toàn bộ 1.349 mẫu validation và kết quả test dùng toàn bộ 1.344 mẫu test.
+
+\begin{table}[htbp]
+\centering
+\caption{Siêu tham số của Transformer huấn luyện từ đầu.}
+\label{tab:hparams_scratch}
+\begin{tabular}{lr}
+\toprule
+Siêu tham số & Giá trị \\
+\midrule
+Kích thước từ vựng & 16000 \\
+Số lớp encoder & 4 \\
+Số lớp decoder & 4 \\
+Số chiều mô hình $d_{model}$ & 256 \\
+Số chiều truyền thẳng $d_{ff}$ & 1024 \\
+Số đầu attention & 8 \\
+Dropout & 0.1 \\
+Kích thước batch & 4 \\
+Bộ tối ưu & AdamW \\
+Tốc độ học & $3 \times 10^{-4}$ \\
+Số epoch & 10 \\
+Độ dài nguồn tối đa & 512 \\
+Độ dài đích tối đa & 128 \\
+Phương pháp giải mã & Beam search, beam size 4 \\
+Tham số có thể huấn luyện & 11469824 \\
+Phần cứng & GPU Kaggle \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Siêu tham số tinh chỉnh mô hình tiền huấn luyện.}
+\label{tab:hparams_pretrained}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lr}
+\toprule
+Siêu tham số & Giá trị \\
+\midrule
+Mô hình tiền huấn luyện & VietAI/vit5-base \\
+Số tham số & 227,720,448 \\
+Kích thước batch & 4/GPU, batch hiệu dụng 16 \\
+Tốc độ học & $3 \times 10^{-5}$ \\
+Số epoch & 3 \\
+Độ dài nguồn tối đa & 768 \\
+Độ dài đích tối đa & 160 \\
+Phương pháp giải mã & Beam 4, length penalty 1.0 \\
+Phần cứng & 2$\times$ Tesla T4, FP16 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\subsection{Độ đo đánh giá}
+Chúng tôi đánh giá các bản tóm tắt được sinh bằng các độ đo ROUGE \cite{lin2004rouge} theo yêu cầu của đề bài. ROUGE-1 đo độ trùng unigram, ROUGE-2 đo độ trùng bigram và ROUGE-L đo dãy con chung dài nhất giữa bản tóm tắt được sinh và bản tóm tắt tham chiếu. Chúng tôi báo cáo điểm F1 cho mọi độ đo ROUGE. Mã đánh giá mô hình tiền huấn luyện xuất ROUGE trên thang 0--100; mọi bảng trong báo cáo chia các giá trị này cho 100 để dùng cùng thang 0--1 với kết quả Transformer huấn luyện từ đầu. Ngoài ra, chúng tôi theo dõi tỷ lệ 3-gram lặp lại cho hệ thống huấn luyện từ đầu và độ dài token được sinh cho các hệ thống tiền huấn luyện.
+
+\subsection{Kết quả định lượng}
+Bảng~\ref{tab:main_results} so sánh hai hướng tiếp cận bắt buộc trên toàn bộ tập validation. Tinh chỉnh toàn bộ ViT5 cải thiện ROUGE-L từ 0.3053 lên 0.4924. ViT5 LoRA hiệu quả tham số hơn nhưng thấp hơn tinh chỉnh toàn bộ 0.0190 ROUGE-L.
+
+\begin{table}[htbp]
+\centering
+\caption{Kết quả chính trên toàn bộ tập validation.}
+\label{tab:main_results}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lccc}
+\toprule
+Mô hình & ROUGE-1 & ROUGE-2 & ROUGE-L \\
+\midrule
+Transformer huấn luyện từ đầu & 0.5768 & 0.2087 & 0.3053 \\
+ViT5-base, tinh chỉnh toàn bộ & \textbf{0.7417} & \textbf{0.4709} & \textbf{0.4924} \\
+ViT5-base, LoRA hạng 16 & 0.7297 & 0.4484 & 0.4733 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{So sánh giải mã trên validation bằng cùng checkpoint đã huấn luyện.}
+\label{tab:decoding_results}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lcccc}
+\toprule
+Phương pháp giải mã & ROUGE-1 & ROUGE-2 & ROUGE-L & Tỷ lệ nén \\
+\midrule
+Giải mã greedy & 0.5724 & 0.2003 & 0.3057 & 0.1718 \\
+Beam + length penalty + chặn 3-gram lặp & 0.5768 & 0.2087 & 0.3053 & 0.1617 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\begin{table*}[htbp]
+\centering
+\caption{Kết quả trên toàn bộ tập test. Dòng ViT5-base sử dụng checkpoint gốc được chọn theo validation và cấu hình giải mã mặc định.}
+\label{tab:test_results}
+\begin{tabular}{lccc}
+\toprule
+Mô hình & ROUGE-1 & ROUGE-2 & ROUGE-L \\
+\midrule
+Transformer từ đầu, giải mã beam & 0.5747 & 0.2038 & 0.3045 \\
+ViT5-base, tinh chỉnh toàn bộ & \textbf{0.7422} & \textbf{0.4675} & \textbf{0.4889} \\
+ViT5-base, LoRA hạng 16 & 0.7262 & 0.4408 & 0.4663 \\
+BARTpho-syllable, tinh chỉnh toàn bộ & 0.7347 & 0.4617 & 0.4807 \\
+ViT5 VietNews warm start, tinh chỉnh toàn bộ & 0.7161 & 0.4426 & 0.4728 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Điểm số cuối cùng trên tập test độc lập bám sát hiệu năng validation. ROUGE-L của Transformer huấn luyện từ đầu thay đổi từ 0.3053 trên validation xuống 0.3045 trên test, trong khi ViT5 thay đổi từ 0.4924 xuống 0.4889. ROUGE-1 và ROUGE-2 cũng thể hiện mức ổn định tương tự. Sự tương đồng này ủng hộ việc dùng validation để lựa chọn mô hình và cho thấy tập test do giảng viên cung cấp có cấu trúc tương đương, mà không sử dụng nội dung test cho phân tích mô tả hoặc tinh chỉnh siêu tham số.
+
+\begin{table*}[htbp]
+\centering
+\caption{Các thí nghiệm loại bỏ causal LM có kiểm soát trên tập con validation cố định gồm 500 mẫu. Các điểm này không thể so sánh trực tiếp với kết quả toàn bộ validation trong Bảng~\ref{tab:main_results}.}
+\label{tab:qwen_ablation}
+\begin{tabular}{lccrccc}
+\toprule
+Mô hình và kỹ thuật & Ngữ cảnh & Hạng LoRA & Mẫu train & ROUGE-1 & ROUGE-2 & ROUGE-L \\
+\midrule
+Qwen3, prompt cơ bản & 768 & 8 & 2500 & 0.5938 & 0.2729 & 0.3379 \\
+Qwen3, prompt nghiêm ngặt & 768 & 8 & 2500 & 0.6044 & 0.2682 & 0.3333 \\
+Qwen3, prompt nghiêm ngặt & 768 & 16 & 2500 & 0.6565 & 0.2987 & 0.3611 \\
+Qwen3, prompt nghiêm ngặt & 1024 & 8 & 2500 & 0.6652 & 0.3122 & \textbf{0.3792} \\
+Qwen3, prompt nghiêm ngặt, thêm dữ liệu, beam 2 & 1024 & 16 & 7000 & \textbf{0.6834} & \textbf{0.3213} & 0.3787 \\
+DeepSeek-R1-Distill-Qwen-1.5B & 768 & 8 & 2500 & 0.4481 & 0.1695 & 0.2619 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Thí nghiệm loại bỏ Qwen3 trên validation cho thấy tăng độ dài ngữ cảnh từ 768 lên 1024 token tạo ra mức tăng ROUGE-L lớn nhất trong các lần chạy 300 bước có kiểm soát. Tăng hạng LoRA cũng có lợi, trong khi chỉ riêng prompt nghiêm ngặt cải thiện ROUGE-1 nhưng không cải thiện ROUGE-L.
+
+\subsection{Mất mát huấn luyện}
+Bảng~\ref{tab:loss_scratch} tóm tắt mất mát huấn luyện và validation của Transformer huấn luyện từ đầu. Mất mát giảm đều từ epoch 1 đến epoch 10, cho thấy quá trình tối ưu ổn định với kiến trúc Pre-LN, lịch warmup và cấu hình gradient clipping. Hình~\ref{fig:loss_pretrained} thể hiện quỹ đạo tương ứng khi tinh chỉnh toàn bộ ViT5. Mất mát huấn luyện được ghi lại của ViT5 giảm nhanh ở giai đoạn đầu, sau đó tiến gần mất mát validation; đồng thời ROUGE-L validation tăng từ 0.4834 tại epoch 0.74 lên 0.4927 gần epoch 3.
+
+\begin{table}[htbp]
+\centering
+\caption{Mất mát huấn luyện và validation của Transformer huấn luyện từ đầu.}
+\label{tab:loss_scratch}
+\begin{tabular}{lrrr}
+\toprule
+Epoch & Mất mát train & Mất mát validation & Tốc độ học \\
+\midrule
+1 & 7.2442 & 6.4236 & $1.8278 \times 10^{-4}$ \\
+2 & 6.1538 & 5.8821 & $1.2924 \times 10^{-4}$ \\
+3 & 5.7858 & 5.6418 & $1.0553 \times 10^{-4}$ \\
+4 & 5.5823 & 5.4877 & $9.1389 \times 10^{-5}$ \\
+5 & 5.4425 & 5.3829 & $8.1741 \times 10^{-5}$ \\
+6 & 5.3377 & 5.2972 & $7.4619 \times 10^{-5}$ \\
+7 & 5.2540 & 5.2388 & $6.9083 \times 10^{-5}$ \\
+8 & 5.1848 & 5.1803 & $6.4622 \times 10^{-5}$ \\
+9 & 5.1249 & 5.1429 & $6.0926 \times 10^{-5}$ \\
+10 & 5.0707 & 5.1026 & $5.7799 \times 10^{-5}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x=1.65cm,y=2.0cm,font=\scriptsize]
+\draw[->] (0,0) -- (3.2,0) node[right] {Epoch};
+\draw[->] (0,0) -- (0,1.7) node[above] {Mất mát};
+\foreach \x in {0,1,2,3} {
+    \draw (\x,0.025) -- (\x,-0.025) node[below] {\x};
+}
+\foreach \y/\lab in {0/2.2,0.4/2.6,0.8/3.0,1.2/3.4,1.6/3.8} {
+    \draw (0.025,\y) -- (-0.025,\y) node[left] {\lab};
+}
+\draw[blue,thick] plot[smooth] coordinates {
+    (0.15,1.4305) (0.30,0.5617) (0.45,0.4742) (0.59,0.4165)
+    (0.74,0.3702) (0.89,0.3370) (1.04,0.3112) (1.19,0.2466)
+    (1.34,0.2557) (1.48,0.2215) (1.63,0.2482) (1.78,0.2232)
+    (1.93,0.2329) (2.08,0.1991) (2.23,0.1673) (2.38,0.1772)
+    (2.52,0.1643) (2.67,0.1879) (2.82,0.1513) (2.97,0.1727)
+};
+\draw[red,dashed,thick] plot coordinates {
+    (0.74,0.2323) (1.48,0.1759) (2.23,0.1576) (2.97,0.1522)
+};
+\draw[blue,thick] (0.25,1.53) -- (0.55,1.53) node[right,black] {train};
+\draw[red,dashed,thick] (1.35,1.53) -- (1.65,1.53) node[right,black] {validation};
+\end{tikzpicture}
+\caption{Mất mát huấn luyện và validation được ghi lại trong quá trình tinh chỉnh toàn bộ ViT5-base. Tọa độ dọc trên đồ thị được dịch 2.2 chỉ để hiển thị gọn hơn; nhãn trên trục thể hiện giá trị mất mát gốc.}
+\label{fig:loss_pretrained}
+\end{figure}
+
+\subsection{Kết quả định tính}
+Bảng~\ref{tab:qualitative} trình bày các ví dụ có sẵn do Transformer huấn luyện từ đầu sinh ra. Các ví dụ cho thấy mô hình huấn luyện từ đầu thường nắm bắt được chủ đề chung nhưng có thể bỏ sót tên riêng, số liệu hoặc đưa vào chi tiết không liên quan.
+
+\begin{table*}[htbp]
+\centering
+\caption{Các ví dụ định tính có trong ảnh chụp notebook đã xuất.}
+\label{tab:qualitative}
+\begin{tabular}{p{0.31\textwidth}p{0.31\textwidth}p{0.31\textwidth}}
+\toprule
+Văn bản đầu vào & Tóm tắt tham chiếu & Transformer huấn luyện từ đầu \\
+\midrule
+MayTrip khai trương văn phòng mới tại 833 Lê Hồng Phong, TP HCM, giới thiệu nhiều ưu đãi du lịch và tour Hokkaido dịp Tết. & MayTrip mở văn phòng mới tại TP HCM để mở rộng dịch vụ phía Nam, đồng thời ra mắt nhiều voucher và tour Hokkaido. & Văn bản trên mô tả về sự kiện du lịch tại TP HCM. Các khách hàng có nhiều ưu đãi như du khách, du lịch và có thể tham quan các hoạt động du lịch. \\
+\midrule
+Đầu tháng 11, hoa dã quỳ nở tại Vườn quốc gia Ba Vì, tạo các vệt hoa vàng dọc đường mòn đi bộ dài hơn 3 km. & Rừng hoa dã quỳ ở Ba Vì rộng khoảng 10 ha, nở vào đầu tháng 11 và là điểm đến cuối thu được nhiều du khách yêu thích. & Một nhóm du khách nổi tiếng tại TP HCM trở thành chuyến du lịch nổi tiếng, trong đó có nhiều địa điểm như hoa, bánh mì và cây xanh. \\
+\midrule
+Việt Nam được Condé Nast Traveler xếp hạng 15 trong danh sách các quốc gia tốt nhất thế giới năm 2024; Thái Lan xếp thứ ba và Nhật Bản đứng đầu. & Việt Nam đứng thứ 15 với 89 điểm, Thái Lan xếp thứ ba và Nhật Bản đứng đầu bảng xếp hạng dựa trên đánh giá của độc giả Condé Nast Traveler. & Việt Nam là một trong những điểm du lịch nổi tiếng nhất thế giới. Sự kiện này bao gồm các trường du lịch, du lịch Việt Nam, Hàn Quốc, Nhật Bản và Thái Lan. \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{table*}[htbp]
+\centering
+\caption{Phân tích định tính tiêu biểu về dự đoán validation của mô hình tiền huấn luyện.}
+\label{tab:qualitative_pretrained}
+\begin{tabular}{p{0.13\textwidth}p{0.23\textwidth}p{0.37\textwidth}p{0.21\textwidth}}
+\toprule
+Mô hình & Thông tin nguồn chính & Dự đoán được sinh & Phân tích \\
+\midrule
+ViT5-base &
+InterContinental Phu Quoc Long Beach Resort giành giải khu nghỉ dưỡng gia đình tại châu Á năm thứ hai liên tiếp và cung cấp dịch vụ lưu trú, chăm sóc sức khỏe, giải trí và ẩm thực. &
+Khu nghỉ dưỡng InterContinental Phu Quoc Long Beach Resort được vinh danh ở hạng mục gia đình trên toàn châu Á, nổi bật với thiết kế lấy cảm hứng từ đại dương. Khuôn viên rộng rãi với nhiều mảng xanh thiên nhiên đậm chất nhiệt đới. Du khách có thể chọn phòng khách sạn, căn hộ, suite hoặc biệt thự cao cấp hướng biển. Khu nghỉ dưỡng còn mang đến các liệu trình chăm sóc sức khỏe toàn diện. &
+Trôi chảy và trung thành; giữ được thực thể chính, giải thưởng, thiết kế, thông tin lưu trú và chăm sóc sức khỏe. Dự đoán bỏ sót chi tiết ``năm thứ hai liên tiếp'' nhưng không đưa vào thông tin thiếu căn cứ rõ ràng. \\
+\midrule
+Qwen3-1.7B LoRA &
+Nghệ sĩ Nhật Bản Miho Nakayama được phát hiện qua đời tại nhà riêng ở Tokyo ngày 6/12; bài viết điểm lại sự nghiệp diễn xuất, âm nhạc và bài đăng mạng xã hội cuối cùng của cô. &
+Nghệ sĩ Nhật Bản Miho Nakayama đã qua đời vào ngày 12/11, được tìm thấy trong nhà riêng của mình ở Tokyo. Cô đã có lịch sử thành công trong cả âm nhạc và phim trường, bao gồm cả các giải thưởng danh giá. Trước khi qua đời, cô đã đăng tải một trạng thái buồn bã trên mạng xã hội. &
+Mạch lạc và súc tích nhưng thay đổi ngày 6/12 thành 12/11. Đây là một lỗi ảo giác số liệu rõ ràng dù các nội dung chủ đề khác nhìn chung chính xác. \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Ví dụ ViT5 thể hiện lợi ích thực tiễn của tiền huấn luyện sequence-to-sequence tiếng Việt: mô hình nén một bài viết quảng bá dài thành bản tóm tắt mạch lạc, đồng thời giữ lại nhiều khía cạnh quan trọng thay vì chỉ nêu tên chủ đề. Ví dụ Qwen3 vẫn trôi chảy và nắm bắt được danh tính, sự nghiệp, địa điểm cùng bài đăng mạng xã hội cuối cùng của nhân vật, nhưng ngày tháng sai cho thấy sự tương đồng ngữ nghĩa ở mức cao không đảm bảo độ chính xác về sự kiện. Kết hợp với các độ đo tổng hợp, những ví dụ này ủng hộ việc chọn ViT5 làm mô hình cuối cùng, đồng thời duy trì chỉ dẫn rõ ràng về tính trung thành và kiểm tra thực thể/số liệu cho các biến thể causal LM. Độ dài đầu ra tổng hợp cũng cho thấy một vấn đề kiểm soát còn tồn tại: ViT5 sinh khoảng 125 token trên validation, gần với giới hạn tối đa 160 token.
+
+% =========================================================
+\section{Thảo luận và phân tích lỗi}
+
+\subsection{Ưu và nhược điểm của Transformer huấn luyện từ đầu}
+Transformer huấn luyện từ đầu được thiết kế nhằm kiểm tra liệu kiến trúc encoder-decoder dựa trên attention cốt lõi có thể học cách sinh bản tóm tắt từ dữ liệu huấn luyện hay không. Ưu điểm chính là mọi thành phần đều minh bạch và có thể kiểm soát, phù hợp để nghiên cứu cơ chế bên trong của Transformer. Do cài đặt không sử dụng \texttt{nn.Transformer}, từng thành phần có thể được kiểm tra trực tiếp: các phép chiếu attention, padding mask, causal mask, kết nối phần dư, chuẩn hóa Pre-LN và giải mã tự hồi quy.
+
+Tuy nhiên, huấn luyện từ đầu đòi hỏi lượng dữ liệu và tính toán đáng kể. Vì mô hình bắt đầu từ khởi tạo ngẫu nhiên, nó có thể học chậm và sinh bản tóm tắt kém trôi chảy hơn mô hình tiền huấn luyện. Trong các thí nghiệm của chúng tôi, mất mát giảm đều qua 10 epoch và tỷ lệ lặp gần bằng không khi chặn 3-gram lặp lại. Tỷ lệ nén vào khoảng 0.16 với giải mã beam, cho thấy mô hình tạo ra các bản tóm tắt ngắn hơn đáng kể so với văn bản đầu vào. Các vấn đề định tính còn lại cần được phân tích thủ công từ đầu ra JSONL được sinh, đặc biệt là việc thiếu chi tiết số liệu và khả năng ảo giác thực thể.
+
+\subsection{Ưu và nhược điểm của mô hình tiền huấn luyện}
+ViT5-base mạnh hơn đáng kể so với Transformer huấn luyện từ đầu trên mọi độ đo ROUGE. Trên toàn bộ tập test, mô hình cải thiện ROUGE-1 thêm 0.1675, ROUGE-2 thêm 0.2637 và ROUGE-L thêm 0.1844. Điều này khẳng định giá trị của tiền huấn luyện chuyên biệt cho tiếng Việt: mô hình bắt đầu tinh chỉnh với các biểu diễn từ vựng, cú pháp và ngữ nghĩa hữu ích thay vì chỉ học sinh ngôn ngữ từ 10.775 mẫu huấn luyện. Dự đoán mẫu về khu nghỉ dưỡng cũng cho thấy độ bao phủ nhiều khía cạnh tốt, giữ lại thực thể được nêu tên, giải thưởng, thiết kế, lựa chọn lưu trú và dịch vụ chăm sóc sức khỏe trong một đoạn văn trôi chảy.
+
+Chi phí chính nằm ở tính toán. Tinh chỉnh toàn bộ ViT5 cập nhật 227,72 triệu tham số, so với 11,47 triệu của mô hình huấn luyện từ đầu. LoRA giảm số tham số ViT5 có thể huấn luyện xuống 1,77 triệu, nhưng ROUGE-L trên toàn bộ test giảm từ 0.4889 xuống 0.4663. BARTpho cạnh tranh với ROUGE-L 0.4807, trong khi VietNews warm start chỉ đạt 0.4728, cho thấy warm start chuyên biệt theo tác vụ không tự động chuyển giao tốt nhất sang tập dữ liệu này. Nhánh Qwen3 linh hoạt và hỗ trợ chỉ dẫn rõ ràng về tính trung thành, nhưng sinh chậm hơn, vẫn thấp hơn ViT5 trong các thí nghiệm tập con có kiểm soát và có thể làm thay đổi chi tiết số liệu quan trọng như ngày tháng.
+
+\subsection{Các nhóm lỗi}
+Chúng tôi chia các lỗi phổ biến thành các nhóm sau:
+\begin{itemize}
+    \item \textbf{Thiếu thông tin chính}: bản tóm tắt được sinh bỏ sót thực thể, sự kiện hoặc chi tiết số liệu quan trọng.
+    \item \textbf{Lặp}: mô hình lặp từ, cụm từ hoặc mệnh đề.
+    \item \textbf{Ảo giác}: mô hình sinh ra thông tin không được văn bản nguồn hỗ trợ.
+    \item \textbf{Tóm tắt quá chung chung}: đầu ra trôi chảy nhưng quá mơ hồ để đại diện cho văn bản đầu vào.
+    \item \textbf{Vấn đề kiểm soát độ dài}: bản tóm tắt được sinh quá ngắn hoặc quá dài so với tham chiếu.
+\end{itemize}
+
+\begin{table*}[htbp]
+\centering
+\caption{Phân tích lỗi dựa trên bằng chứng từ kết quả thí nghiệm đã xuất.}
+\label{tab:error_analysis}
+\begin{tabular}{lp{0.38\textwidth}p{0.38\textwidth}}
+\toprule
+Loại lỗi & Transformer huấn luyện từ đầu & Mô hình tiền huấn luyện \\
+\midrule
+Thiếu thông tin chính & Có xuất hiện; bản tóm tắt được sinh thường thiếu tên riêng, số liệu và địa điểm cụ thể. & ViT5 giữ lại một số khía cạnh chính trong ví dụ khu nghỉ dưỡng nhưng bỏ sót chi tiết ``năm thứ hai liên tiếp''. \\
+Lặp & Thấp; Rep-3 bằng 0.0 khi chặn 3-gram lặp lại. & Có bật chặn 3-gram lặp lại, nhưng Rep-3 không được xuất trong các lần chạy mô hình tiền huấn luyện. \\
+Ảo giác & Xuất hiện trong các đầu ra lấy mẫu, đặc biệt là địa điểm hoặc chi tiết sự kiện sai. & Qwen3 thay đổi ngày được báo cáo của Miho Nakayama từ 6/12 thành 12/11; không phát hiện ảo giác rõ ràng trong đầu ra ViT5 lấy mẫu. \\
+Quá chung chung & Có xuất hiện; một số bản tóm tắt lạm dụng các cụm từ chung về du lịch/sự kiện. & Đầu ra ViT5 và Qwen3 lấy mẫu đều cụ thể theo chủ đề và giữ được thực thể trung tâm được nêu tên. \\
+Vấn đề độ dài & Được kiểm soát một phần; tỷ lệ nén khoảng 0.16 với giải mã beam. & ViT5 sinh trung bình 125 token trên validation, trong khi 15.05\% tham chiếu dài hơn 128 từ. \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Vì sao mô hình ngôn ngữ nhân quả đạt điểm thấp hơn}
+Điểm causal LM thấp hơn nên được diễn giải là tác động kết hợp của kiến trúc, đặc trưng dữ liệu và ngân sách thí nghiệm, thay vì xem đây là sự bất lực nội tại của mô hình nhân quả đối với bài toán tóm tắt.
+
+Thứ nhất, tập dữ liệu ưu tiên mạnh việc sinh có điều kiện bám sát nguồn. Các tham chiếu validation tái sử dụng 92.51\% unigram và 68.99\% bigram từ bài viết. Mô hình encoder-decoder mã hóa riêng toàn bộ nguồn và sinh đích thông qua cross-attention, rất phù hợp để lựa chọn và tổ chức lại các cụm từ nguồn. Ngược lại, causal LM biểu diễn chỉ dẫn, bài viết và bản tóm tắt được sinh trong cùng một luồng tự hồi quy. Mô hình có thể tạo ra các cách diễn đạt lại trôi chảy, hợp lý về ngữ nghĩa nhưng nhận điểm ROUGE theo độ trùng từ vựng thấp hơn.
+
+Thứ hai, encoder-decoder và mô hình nhân quả sử dụng ngân sách ngữ cảnh khác nhau. ViT5 dành tối đa 768 token cho đầu vào encoder và một ngân sách decoder riêng gồm 160 token. Quy trình causal phải đưa cả chỉ dẫn và bài viết vào prompt trước khi sinh tóm tắt. Các token prompt và sự phân mảnh subword tiếng Việt làm giảm độ phủ hiệu dụng của bài viết. Điều này giải thích vì sao tăng ngữ cảnh nguồn Qwen3 từ 768 lên 1024 token làm ROUGE-L trên tập con validation tăng từ 0.3333 lên 0.3792. Phân tích độ phủ phần đầu cũng cho thấy một phần tư đầu bài viết chỉ chứa 51.31\% unigram của tóm tắt validation, do đó cắt bỏ nội dung phía sau có thể làm mất các sự kiện liên quan.
+
+Thứ ba, thiết lập độ dài đích gây bất lợi cho các lần chạy causal ngắn hơn. Bản tóm tắt validation dài trung bình 103.3 từ và 15.05\% chứa hơn 128 từ. Các thí nghiệm loại bỏ Qwen3 chính giới hạn đích ở 128 token subword, vì vậy các tham chiếu dài này, và có thể thêm nhiều tham chiếu khác do phân mảnh subword, chịu áp lực cắt bớt đáng kể. ViT5 dùng ngân sách đích lớn hơn là 160 token, cung cấp thêm 25\% khả năng sinh. Chỉ 0.30\% tham chiếu validation vượt quá 160 từ, dù việc cắt ở mức token vẫn có thể ảnh hưởng đến tỷ lệ lớn hơn.
+
+Thứ tư, ngân sách huấn luyện không bằng nhau. Tinh chỉnh toàn bộ ViT5 dùng cả 10.775 mẫu huấn luyện trong ba epoch, trong khi các thí nghiệm causal có kiểm soát dùng 2.500 hoặc 7.000 mẫu và chỉ 300 hoặc 700 bước tối ưu. Điểm thấp hơn của chúng phản ánh cả khác biệt họ mô hình lẫn mức thích nghi còn hạn chế. Cuối cùng, tập dữ liệu yêu cầu tính trung thành về số liệu: 96.93\% các con số trong tham chiếu validation xuất hiện ở nguồn. Lỗi ngày tháng trong mẫu Qwen3 chứng minh rằng causal LM đã tinh chỉnh theo chỉ dẫn có thể sinh ra một con số hợp lý nhưng thiếu căn cứ, bị phạt mạnh bởi cả ROUGE lẫn đánh giá của con người.
+
+\subsection{So sánh giữa các phương pháp}
+Các thí nghiệm đã hoàn thành cho thấy lợi thế chất lượng rõ ràng của mô hình sequence-to-sequence tiền huấn luyện. Tinh chỉnh toàn bộ ViT5 cải thiện ROUGE-L trên toàn bộ validation từ 0.3053 lên 0.4924 và ROUGE-L trên toàn bộ test từ 0.3045 lên 0.4889. Mô hình cũng tăng ROUGE-2 trên test lên hơn gấp đôi, cho thấy khả năng bảo toàn nội dung ở cấp cụm từ mạnh hơn nhiều. BARTpho tiến gần ViT5 nhưng vẫn thấp hơn 0.0082 ROUGE-L trên toàn bộ test.
+
+Transformer huấn luyện từ đầu vẫn có giá trị vì mọi thành phần kiến trúc đều minh bạch, có thể kiểm soát và 11,47 triệu tham số khiến mô hình nhỏ hơn ViT5 rất nhiều. Beam search cải thiện nhẹ ROUGE-1 và ROUGE-2 so với giải mã greedy trong khi vẫn duy trì số 3-gram lặp lại bằng không. ViT5 LoRA có chi phí thích nghi thấp nhất, chỉ huấn luyện 0.777\% mô hình, nhưng mất 0.0190 ROUGE-L validation và 0.0226 ROUGE-L test so với tinh chỉnh toàn bộ.
+
+Các thí nghiệm causal LM cho thấy chỉ kiến trúc là chưa đủ. Với Qwen3, mở rộng ngữ cảnh nguồn lên 1024 token làm ROUGE-L trên tập con validation tăng từ 0.3333 lên 0.3792 trong các thiết lập hạng 8 tương tự. Tăng hạng và dữ liệu huấn luyện làm tăng ROUGE-1 và ROUGE-2 nhưng không tiếp tục cải thiện ROUGE-L. Vì vậy, độ phủ nguồn là cải tiến causal LM hiệu quả nhất quan sát được trong các thí nghiệm loại bỏ có kiểm soát. Tuy nhiên, lỗi ngày tháng được lấy mẫu cho thấy các cải tiến causal LM trong tương lai cần kiểm tra rõ ràng tên riêng, số liệu và ngày tháng thay vì chỉ tối ưu độ trùng từ vựng.
+
+% =========================================================
+\section{Kết luận}
+Trong đồ án này, chúng tôi đã phát triển các hệ thống tóm tắt hướng trừu tượng tiếng Việt theo hai hướng tiếp cận bắt buộc: một Transformer được cài đặt và huấn luyện từ đầu, cùng các mô hình ngôn ngữ tiền huấn luyện dưới 3 tỷ tham số được tinh chỉnh. Transformer huấn luyện từ đầu cài đặt trực tiếp kiến trúc encoder-decoder và các cải tiến huấn luyện thực tiễn. Hệ thống tiền huấn luyện chính tinh chỉnh toàn bộ ViT5-base, trong khi các thí nghiệm bổ sung khảo sát ViT5 LoRA, BARTpho, VietNews warm start, Qwen3, DeepSeek-R1-Distill-Qwen, thiết kế prompt, độ dài ngữ cảnh và giải mã.
+
+Transformer huấn luyện từ đầu đạt ROUGE-1/2/L là 0.5747/0.2038/0.3045 trên toàn bộ tập test. Tinh chỉnh toàn bộ ViT5 đạt 0.7422/0.4675/0.4889 và là hệ thống mạnh nhất đã hoàn thành. Dự đoán đại diện của mô hình trôi chảy, trung thành và bao phủ nhiều khía cạnh quan trọng của một bài viết dài. LoRA làm giảm mạnh số tham số có thể huấn luyện nhưng gây suy giảm chất lượng có thể đo lường; các thí nghiệm loại bỏ Qwen3 cho thấy ngữ cảnh nguồn dài hơn hữu ích hơn việc chỉ siết chặt prompt. Công việc tương lai nên mở rộng kiểm tra tính trung thành bởi con người và đánh giá tính đúng đắn bằng các độ đo xét đến thực thể, số liệu và ngày tháng bên cạnh ROUGE.
+
+\section*{Mã nguồn}
+Mã huấn luyện mô hình tiền huấn luyện, LoRA, đánh giá, so sánh test cuối cùng và thí nghiệm Kaggle có tại \url{https://github.com/Anhnguyen0812/pretrained-summarization}. Repository chứa cài đặt Transformer huấn luyện từ đầu sẽ được bổ sung riêng. Phân tích tập dữ liệu chỉ trên train/validation có khả năng tái lập được cài đặt trong \texttt{analyze\_train\_valid\_dataset.py}; đầu ra của mã ghi lại các thống kê được báo cáo trong Bảng~\ref{tab:dataset} và~\ref{tab:dataset_overlap}.
+
+% =========================================================
+\begin{thebibliography}{00}
+\bibitem{vaswani2017attention}
+A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, L. Kaiser, and I. Polosukhin, ``Attention is All You Need,'' in \textit{Advances in Neural Information Processing Systems}, 2017.
+
+\bibitem{lin2004rouge}
+C.-Y. Lin, ``ROUGE: A Package for Automatic Evaluation of Summaries,'' in \textit{Proceedings of the ACL Workshop on Text Summarization Branches Out}, 2004.
+
+\bibitem{lewis2020bart}
+M. Lewis, Y. Liu, N. Goyal, M. Ghazvininejad, A. Mohamed, O. Levy, V. Stoyanov, and L. Zettlemoyer, ``BART: Denoising Sequence-to-Sequence Pre-training for Natural Language Generation, Translation, and Comprehension,'' in \textit{Proceedings of ACL}, 2020.
+
+\bibitem{raffel2020t5}
+C. Raffel, N. Shazeer, A. Roberts, K. Lee, S. Narang, M. Matena, Y. Zhou, W. Li, and P. J. Liu, ``Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer,'' \textit{Journal of Machine Learning Research}, vol. 21, no. 140, pp. 1--67, 2020.
+
+\bibitem{zhang2020pegasus}
+J. Zhang, Y. Zhao, M. Saleh, and P. Liu, ``PEGASUS: Pre-training with Extracted Gap-sentences for Abstractive Summarization,'' in \textit{Proceedings of ICML}, 2020.
+
+\bibitem{phan2022vit5}
+L. Phan, H. Tran, H. Nguyen, and T. H. Trinh, ``ViT5: Pretrained Text-to-Text Transformer for Vietnamese Language Generation,'' in \textit{Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Student Research Workshop}, 2022.
+
+\bibitem{tran2022bartpho}
+N. L. Tran, D. M. Le, and D. Q. Nguyen, ``BARTpho: Pre-trained Sequence-to-Sequence Models for Vietnamese,'' in \textit{Proceedings of Interspeech}, 2022.
+
+\bibitem{hu2022lora}
+E. J. Hu, Y. Shen, P. Wallis, Z. Allen-Zhu, Y. Li, S. Wang, L. Wang, and W. Chen, ``LoRA: Low-Rank Adaptation of Large Language Models,'' in \textit{Proceedings of ICLR}, 2022.
+
+\bibitem{yang2025qwen3}
+A. Yang et al., ``Qwen3 Technical Report,'' arXiv preprint arXiv:2505.09388, 2025.
+\end{thebibliography}
+
+\balance
+\end{document}
